@@ -13,6 +13,10 @@ header{
     padding: 0;
 }
 
+h2{
+    font-size: 34px;
+}
+
 .navbar-container {
     display: flex;
     justify-content: space-between; /* Pushes title to left and nav to right */
@@ -51,6 +55,14 @@ header{
     border-radius: 4px;
 }
 
+.addbtn {
+    font-size: 24px;
+    text-decoration: none;
+    background-color: #28a745;
+    color: white;
+    border-radius: 4px;
+}
+
 .greenbtn {
     font-size: 24px;
     text-decoration: none;
@@ -70,10 +82,29 @@ header{
     opacity: 0.6; 
 }
 
+.redbtn {
+    font-size: 24px;
+    text-decoration: none;
+    background-color: #dc3545;
+    color: white;
+    border-radius: 4px;
+}
+
+.redbtn:enabled {
+    cursor: pointer;
+}
+
+.redbtn:disabled {
+    cursor: not-allowed;
+    background-color: #cccccc; 
+    color: #666666;
+    opacity: 0.6; 
+}
+
 .container {
     display: flex;
 }
 
-.container div {
-     margin: 10px;
+.container div{
+    margin: 0px 10px 0px 10px;
 }

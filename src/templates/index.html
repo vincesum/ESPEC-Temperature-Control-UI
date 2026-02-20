@@ -4,7 +4,7 @@
 {% endblock %}
 {% block body %}
 <header class="navbar-container">
-    <h1 class="logo">ESPEC Temperature Chamber Controller</h1>
+    <h1 class="logo" style="font-size: 40px">ESPEC Temperature Chamber Controller</h1>
     <nav class="nav-links">
         <a href="/" class="btn1">Soaking Mode</a>
         <a href="/cycle" class="btn2">Cycling Mode</a>
@@ -15,7 +15,7 @@
     <div class="container">
     <div class="left">
     <div class="input-group">
-        <h3>Add New Task</h3>
+        <h2>Add New Task</h2>
         
         <div style="display: flex; gap: 10px; margin: 0px; border: 0px; padding: 0px;">
             <input type="number" id="newTemp" list="tempOptions" placeholder="Temp(°C)" style="width: 100px;">
@@ -110,7 +110,7 @@
         </div>
 
 
-        <button class="greenbtn" onclick="sendNewTask()" style="font-size: 18px; margin-top: 10px; border: none; padding: 10px; cursor: pointer;">
+        <button class="addbtn" onclick="sendNewTask()" style="font-size: 18px; margin-top: 10px; border: none; padding: 10px; cursor: pointer;">
             + Add Task
         </button>  
 
@@ -144,63 +144,51 @@
     </div>
     <div class="right">
         <h2>
-            {% if current_task.type == "Task" %}
-                Current task: Soak at {{ current_task.temp }}°C for {{ current_task.hour }}hr {{ current_task.min }}min {{ current_task.sec }}sec
-            {% elif current_task.type == "Idle" %}
-                Current task: Idle for {{ current_task.hour }}hr {{ current_task.min }}min {{ current_task.sec }}sec
-            {% else %}
-                No active task.
-            {% endif %}
+            <div> <span id="task-display">Loading current task...</span></div>
         </h2>
-        <div>Time Left: <span id="time">00:00:00</span></div>
+        <span id="temptime" style="display: flex;">
+            <div>Time Left: <span id="time">00:00:00</span></div>
+            <div>Current Temp: <span id="current-temp">{{ current_temp }}</span>°C</div>
+        </span>
 
-        {% if current_task %}
-        <script>
-            document.addEventListener('DOMContentLoaded', function() {
-                // 1. Check if the task exists (Jinja logic)
-                    
-                    console.log("Active Task Found. Initializing Timer...");
+        <div id="startstop" style="display: flex; gap: 20px; margin-top: 20px;">
+            <button onclick="sendStartCommand(this)" class="greenbtn" style="font-size: 30px; margin: 10px 30px 10px 30px; border: none; padding: 10px;" {% if current_task %} disabled {% endif %}>Start</button>
+            <script>
+                async function sendStartCommand(btn) {
+                    try {
+                        let response = await fetch('/api/start');
 
-                    // 2. Safely convert Python numbers to JS numbers
-                    // We use 'default(0)' to prevent 'None' errors
-                    // We use 'int' to ensure no weird string quotes appear
-                    var h = Number("{{ current_task.hour | default(0) | int }}");
-                    var m = Number("{{ current_task.min | default(0) | int }}");
-                    var s = Number("{{ current_task.sec | default(0) | int }}");
-                    
-                    var totalSeconds = (h * 3600) + (m * 60) + s;
-                    
-                    var display = document.querySelector('#time');
-                    
-                    // 3. Start the timer (Make sure startTimer function is defined above this!)
-                    if (typeof startTimer === "function") {
-                        startTimer(totalSeconds, display);
-                    } else {
-                        console.error("Error: startTimer function is missing!");
-                    } 
-            });
-        </script>
-        {% endif %}
-
-        <button onclick="sendStartCommand(this)" class="greenbtn" style="font-size: 30px; margin: 10px 30px 10px 30px; border: none; padding: 10px;" {% if current_task %} disabled {% endif %}>Start</button>
-        <script>
-            async function sendStartCommand(btn) {
-                try {
-                    let response = await fetch('/api/start');
-
-                    if (response.ok) {
-                        window.location.reload(); 
-                    } else {
-                        let errorMessage = await response.text();
-                        alert("Error: " + errorMessage);
+                        if (response.ok) {
+                            window.location.reload(); 
+                        } else {
+                            let errorMessage = await response.text();
+                            alert("Error: " + errorMessage);
+                        }
+                    } catch (error) {
+                        console.error("Network Error:", error);
+                        alert("Failed to connect to the oven controller.");
                     }
-                } catch (error) {
-                    console.error("Network Error:", error);
-                    alert("Failed to connect to the oven controller.");
                 }
-            }
-            
-        </script>
+            </script>
+            <button onclick="sendStopCommand(this)" class="redbtn" style="font-size: 30px; margin: 10px 30px 10px 30px; border: none; padding: 10px;" {% if not current_task %} disabled {% endif %}>Stop</button>
+            <script>
+                async function sendStopCommand(btn) {
+                    try {
+                        let response = await fetch('/api/stop');
+
+                        if (response.ok) {
+                            window.location.reload(); 
+                        } else {
+                            let errorMessage = await response.text();
+                            alert("Error: " + errorMessage);
+                        }
+                    } catch (error) {
+                        console.error("Network Error:", error);
+                        alert("Failed to connect to the oven controller.");
+                    }
+                }
+            </script>
+        </div>
     </div>
 
 </main>
@@ -271,18 +259,19 @@
     }
 }
 
-function startTimer(duration, display) {
-    var start = 0;
+let activeTimerInterval = null;
+function startTimer(duration, startTime, display) {
+    if (activeTimerInterval) {
+        clearInterval(activeTimerInterval);
+    }
     function timer() {
-        var start_time = Number("{{ current_task.start_time | default(0) }}");
-        var elapsed = (Date.now() - (start_time * 1000)) / 1000;
-        
-        // Remaining = Total Duration - Elapsed
+        var elapsed = (Date.now() - (startTime * 1000)) / 1000;
         var diff = duration - elapsed;  
         
         if (diff <= 0) {
-            clearInterval(timerInterval);
+            clearInterval(activeTimerInterval);
             display.textContent = "00:00:00";
+            isTimerRunning = false
             return;
         }
 
@@ -298,9 +287,78 @@ function startTimer(duration, display) {
 
     };
     timer();
-    var timerInterval = setInterval(timer, 1000)
+    var activeTimerInterval = setInterval(timer, 1000)
 }
+    let isTimerRunning = false; 
+    let activeTimerStartTime = 0;
+    async function checkOvenStatus() {
+        try {
+            // 1. Ask the server for the live status
+            let response = await fetch('/api/status');
+            let data = await response.json();
+            
+            let display = document.querySelector('#time');
 
+            // 2. Check the conditions
+            if (data.state === "SOAKING" && data.start_time !== -1) {
+                
+                // If it is soaking, start timer
+                if (!isTimerRunning || activeTimerStartTime !== data.start_time) {
+                    console.log("Oven reached SOAKING temp! Initializing Timer...");
+                    
+                    if (typeof startTimer === "function") {
+                        startTimer(data.duration, data.start_time, display);
+                        isTimerRunning = true; // Lock the door
+                        activeTimerStartTime = data.start_time;
+                    }
+                }
+            } else {
+                // If it goes back to IDLE or HEATING, reset our lock
+                if (isTimerRunning) {
+                    console.log("Task stopped or finished.");
+                    isTimerRunning = false; // Unlock so the NEXT task can run
+                    display.textContent = "00:00:00";
+                    activeTimerStartTime = 0;
+                }
+            }
+
+            let currentTempDisplay = document.querySelector('#current-temp');
+            currentTempDisplay.textContent = data.temperature;
+
+            let taskdisplay = document.querySelector('#task-display');
+            if (data.type == "Task") {
+                taskdisplay.textContent = `Current task: Soak at ${data.set_temp}°C for ${data.hour}hr ${data.min}min ${data.sec}sec`;
+            } else if (data.type == "Idle") {
+                taskdisplay.textContent = `Current task: Idle for ${data.hour}hr ${data.min}min ${data.sec}sec`;
+            } else {
+                taskdisplay.textContent = "No active task."
+            }
+
+            let start_button = document.querySelector(".greenbtn");
+            let stop_button = document.querySelector(".redbtn");
+            
+            //Indicates there is no task running
+            if (data.id === -1) {
+                start_button.disabled = false;
+                stop_button.disabled = true;
+            } else {
+                start_button.disabled = true;
+                stop_button.disabled = false;
+            }
+
+        } catch (error) {
+            console.error("Failed to fetch oven status:", error);
+        }
+    }
+
+
+    // 3. Start the continuous polling loop as soon as the page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log("Connecting to live status feed...");
+        checkOvenStatus(); // Check immediately on load
+        // Call checkOvenStatus() every 1000 milliseconds (1 second)
+        setInterval(checkOvenStatus, 1000); 
+    });
 
 
 </script>

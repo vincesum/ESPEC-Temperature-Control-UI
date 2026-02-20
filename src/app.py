@@ -27,6 +27,8 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + db_path
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 current_task = None
+oven_thread = None
+task_started = False
 
 class TaskList(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -100,54 +102,102 @@ def del_task_route(id):
     
 @app.route('/api/start')
 def start_task_route():
-    task_to_start = db.session.query(TaskList).first()
     global current_task
-
-    if task_to_start is None:
-        current_task = None
-        return "No tasks in the database to start."
-    
-    try:
-        current_task = task_to_start
-        current_task.start_time = datetime.now().timestamp()
-        db.session.delete(task_to_start)
-        db.session.commit()
-        thread = threading.Thread(target=oven.startTask)
-        thread.start()
-        return "Task Started", 200
-    
-    except Exception as e:
-        return f'There was a problem starting the task: {e}'    
+    global task_started
+    global oven_thread
+    with app.app_context():
+        if db.session.query(TaskList).count() == 0:
+            current_task = None
+            task_started = False
+            return "No tasks in the database to start."
+        try:
+            task_to_start = db.session.query(TaskList).first()
+            current_task = task_to_start
+            current_task.start_time = -1  # Initialize start_time to -1 to indicate it hasn't started yet
+            db.session.delete(task_to_start)
+            db.session.commit()
+            if task_started == False:
+                oven_thread = threading.Thread(target=oven.startTask)
+                oven_thread.start()
+                task_started = True
+            else:
+                return "Oven is already running a task. Cannot start another one until it's done."
+            return "Task Started", 200
+        
+        except Exception as e:
+            return f'There was a problem starting the task: {e}'    
     
 @app.route('/api/stop')
 def stop_task_route():
-    task_to_stop = db.session.query(TaskList).first()
-    if task_to_stop is None:
+    global current_task
+    if current_task is None:
         return "No tasks in the database to stop."
     
     try:
-        global current_task
+        global oven_thread
+        global task_started
         current_task = None
         oven.stopTask()
+        oven_thread = None
+        task_started = False
         return redirect('/')
     except Exception as e:
         return f'There was a problem stopping the task: {e}' 
     
 def update_status_loop():
     while True:
-        if oven_status['state'] != "IDLE":
-            oven_status['mode'] = oven.mode
-            oven_status["temp"] = oven.temperature
-            oven_status["state"] = oven.state
-            oven_status["task_done"] = oven.task_done
-        threading.Event().wait(1)  # Update every 3 seconds
+        oven_status['mode'] = oven.mode
+        oven_status["temp"] = oven.temperature
+        oven_status["state"] = oven.state
+        oven_status["task_done"] = oven.task_done
+        threading.Event().wait(1)  # Update every 1 seconds
+        global current_task
+        global task_started
         
         if oven_status["task_done"]:
-            global current_task
             current_task = None
             oven.task_done = False
             start_task_route()
+            
+        if oven_status['state'] == "SOAKING" and current_task and current_task.start_time == -1:
+            current_task.start_time = datetime.now().timestamp()
+            
 
+@app.route('/api/status')
+def get_status():
+    global current_task
+    
+    # 1. If the queue is empty or no task is loaded
+    if current_task is None:
+        return jsonify({
+            "state": "IDLE", 
+            "start_time": -1, 
+            "duration": 0,
+            "temperature": "-",
+            "type": "None",
+            "id": -1
+        })
+    
+    # 2. Calculate the total duration in seconds safely
+    # (Assuming current_task is a dictionary. If it's an object, use current_task.hour instead)
+    total_seconds = (current_task.hour * 3600) + \
+                    (current_task.min * 60) + \
+                    current_task.sec
+                    
+    # 3. Send back the live facts
+    return jsonify({
+        "state": oven.state,  # Make sure this points to your oven's live hardware state
+        "start_time": current_task.start_time if hasattr(current_task, 'start_time') else -1,
+        "duration": total_seconds,
+        "hour": current_task.hour if hasattr(current_task, 'hour') else 0,
+        "min": current_task.min if hasattr(current_task, 'min') else 0,
+        "sec": current_task.sec if hasattr(current_task, 'sec') else 0,
+        "temperature": oven.temperature if hasattr(oven, 'temperature') else "-",
+        "set_temp": current_task.temp if hasattr(current_task, 'temp') else -1,
+        "type": current_task.type if hasattr(current_task, 'type') else "None",
+        "id": current_task.id if hasattr(current_task, 'id') else -1
+    })
+    
 if __name__ == '__main__':
     with app.app_context():
         # 3. Print the path so you can copy-paste it into your file explorer

@@ -30,9 +30,10 @@ class SH241():
         self.halfCycle = 0
         #Status variables
         self.temperature = 0
-        self.mode = "STANDBY"
-        self.state = "IDLE"
+        self.mode = "STANDBY" #Modes: STANDBY, RAMPING, SOAKING, CYCLE_RAMPING, CYCLE_SOAKING
+        self.state = "IDLE" #States: IDLE, HEATING, COOLING, SOAKING
         self.task_done = False
+        self.stop_task = False
 
     def OpenChannel(self):
         self._instr.Open()
@@ -386,11 +387,14 @@ class SH241():
         seconds = total_seconds % 60
         self.AddIdle(hours, minutes, seconds)
 
-    def cancelTask(self):
+    def stopTask(self):
         self.timer1 = None
         self.timer2 = None
         self.currentCycle = 1
         self.halfCycle = 0
+        self.stop_task = True
+        self.SetModeStandby()
+        print("Task stopped. Clearing timers and putting chamber in Standby.")
         if not self._tasklist.head:
             self.SetModeStandby()
             print("No Tasks in queue. Putting chamber in Standby.")
@@ -418,6 +422,8 @@ class SH241():
         hours = task.durationInSeconds // 3600
         minutes = (task.durationInSeconds % 3600) // 60
         seconds = task.durationInSeconds % 60
+        
+        self.stop_task = False
         #For task
         if (task.taskName == "Task"):
             self._tasklist.pop_head()
@@ -438,8 +444,6 @@ class SH241():
         else:
             #Half cycle refers to the period where temperature goes to either temp1 or temp2 and soaks
             #Full cycle is the process of soaking at both temperatures for one entire duration
-            
-            
             
             if (self.halfCycle >= 2):
                 self.currentCycle += 1
@@ -509,6 +513,8 @@ class SH241():
 
     #queries the temperature at intervals of 3 seconds and sets a timer once it reaches target
     def temperatureQuerySchedule(self, target, durationInSeconds):
+        if self.stop_task:
+            return
         self.timer2 = threading.Timer(3.0, self.checkTempCallback, args=[target, durationInSeconds])
         self.timer2.start()
         
@@ -542,6 +548,8 @@ class SH241():
             
     #Sets the oven to soak at a target temperature for a specified duration
     def startTemperatureSoak(self, target_temp, durationInSeconds):
+        if self.stop_task:
+            return
         self.mode = "SOAKING"
         self.SetTemp(target_temp)
         self.SetModeConstant()
