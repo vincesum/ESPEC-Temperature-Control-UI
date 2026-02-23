@@ -115,7 +115,6 @@
         </button>  
 
     </div>
-        <p>DEBUG DATA: {{ tasks }}</p>
         <table>
             <tr>
                 <th>Task</th>
@@ -123,23 +122,10 @@
                 <th>Actions</th>
             </tr>
             
-            {% for task in tasks %}
-            
-                <tr>
-                    <td>{{ loop.index }}</td>
-                    
-                    <td>
-                        {% if task.type == "Task" %}
-                            Soak at {{ task.temp }}°C for {{ task.hour }}hr {{ task.min }}min {{ task.sec }}sec
-                        {% elif task.type == "Idle" %}
-                            Idle for {{ task.hour }}hr {{ task.min }}min {{ task.sec }}sec
-                        {% endif %}
-                        <a href="/api/delete/{{ task.id }}">
-                            <button>Delete</button>
-                        </a>   
-                    </td>
-                </tr>
-            {% endfor %}
+            <tbody id="task-table-body">
+                {% for task in tasks %}
+                    {% endfor %}
+            </tbody>
         </table>
     </div>
     <div class="right">
@@ -289,6 +275,7 @@ function startTimer(duration, startTime, display) {
     timer();
     var activeTimerInterval = setInterval(timer, 1000)
 }
+    let currentQueueString = "";
     let isTimerRunning = false; 
     let activeTimerStartTime = 0;
     async function checkOvenStatus() {
@@ -330,6 +317,8 @@ function startTimer(duration, startTime, display) {
                 taskdisplay.textContent = `Current task: Soak at ${data.set_temp}°C for ${data.hour}hr ${data.min}min ${data.sec}sec`;
             } else if (data.type == "Idle") {
                 taskdisplay.textContent = `Current task: Idle for ${data.hour}hr ${data.min}min ${data.sec}sec`;
+            } else if (data.type == "Cycle") {
+                taskdisplay.textContent = `Current task: Cycle between ${data.temp1}°C and ${data.temp2}°C for ${data.hour}hr ${data.min}min ${data.sec}sec`;
             } else {
                 taskdisplay.textContent = "No active task."
             }
@@ -346,11 +335,48 @@ function startTimer(duration, startTime, display) {
                 stop_button.disabled = false;
             }
 
+            let newQueueString = JSON.stringify(data.queue);
+
+            // Only redraw the table if the queue actually changed (e.g., a task finished or was added)
+            if (newQueueString !== currentQueueString) {
+                currentQueueString = newQueueString;
+                let tbody = document.querySelector('#task-table-body');
+                let newHTML = '';
+
+                // Loop through the array Python sent us
+                data.queue.forEach((task, index) => {
+                    let taskText = '';
+                    if (task.type === "Task") {
+                        taskText = `Soak at ${task.temp}°C for ${task.hour}hr ${task.min}min ${task.sec}sec`;
+                    } else if (task.type === "Idle") {
+                        taskText = `Idle for ${task.hour}hr ${task.min}min ${task.sec}sec`;
+                    }
+                    else if (task.type === "Cycle") {
+                        taskText = `Cycle between ${task.temp1}°C and ${task.temp2}°C for ${task.hour}hr ${task.min}min ${task.sec}sec`;
+                    }
+
+                    // Build the HTML for each row
+                    newHTML += `
+                        <tr>
+                            <td>${index + 1}</td>
+                            <td>
+                                ${taskText}
+                                <a href="/api/delete/${task.id}">
+                                    <button>Delete</button>
+                                </a>   
+                            </td>
+                        </tr>
+                    `;
+                });
+
+            // Replace the old HTML with the new dynamic HTML
+            tbody.innerHTML = newHTML;
+        }
+
         } catch (error) {
             console.error("Failed to fetch oven status:", error);
         }
     }
-
 
     // 3. Start the continuous polling loop as soon as the page loads
     document.addEventListener('DOMContentLoaded', function() {

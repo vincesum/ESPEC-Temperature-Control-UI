@@ -168,6 +168,19 @@ def get_status():
     global current_task
     
     # 1. If the queue is empty or no task is loaded
+    queue = db.session.query(TaskList).all()
+    
+    queue_data = []
+    for t in queue:
+        queue_data.append({
+            "id": t.id,
+            "type": t.type,
+            "temp": t.temp,
+            "hour": t.hour,
+            "min": t.min,
+            "sec": t.sec
+        })
+    
     if current_task is None:
         return jsonify({
             "state": "IDLE", 
@@ -175,7 +188,8 @@ def get_status():
             "duration": 0,
             "temperature": "-",
             "type": "None",
-            "id": -1
+            "id": -1,
+            "queue": queue_data
         })
     
     # 2. Calculate the total duration in seconds safely
@@ -195,7 +209,8 @@ def get_status():
         "temperature": oven.temperature if hasattr(oven, 'temperature') else "-",
         "set_temp": current_task.temp if hasattr(current_task, 'temp') else -1,
         "type": current_task.type if hasattr(current_task, 'type') else "None",
-        "id": current_task.id if hasattr(current_task, 'id') else -1
+        "id": current_task.id if hasattr(current_task, 'id') else -1,
+        "queue": queue_data
     })
     
 if __name__ == '__main__':

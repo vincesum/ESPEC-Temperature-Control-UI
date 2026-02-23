@@ -4,7 +4,7 @@
 {% endblock %}
 {% block body %}
 <header class="navbar-container">
-    <h1 class="logo">ESPEC Temperature Chamber Controller</h1>
+    <h1 class="logo" style="font-size: 40px">ESPEC Temperature Chamber Controller</h1>
     <nav class="nav-links">
         <a href="/" class="btn1">Soaking Mode</a>
         <a href="/cycle" class="btn2">Cycling Mode</a>
@@ -12,13 +12,15 @@
 </header>
 
 <main>
+    <div class="container">
+    <div class="left">
     <div class="input-group">
-        <h3>Add New Cycle</h3>
+        <h2>Add New Task</h2>
         
-        <div style="display: flex; gap: 10px;">
+        <div style="display: flex; gap: 10px; margin: 0px; border: 0px; padding: 0px;">
             <input type="number" id="newTemp1" list="tempOptions" placeholder="Temp 1(°C)" style="width: 100px;">
             <input type="number" id="newTemp2" list="tempOptions" placeholder="Temp 2(°C)" style="width: 100px;">
-
+            
             <datalist id="tempOptions">
                 <option value="0"></option>
                 <option value="5"></option>
@@ -89,9 +91,9 @@
                 <option value="50"></option>
                 <option value="55"></option>
             </datalist>
-
+            
             <input type="number" id="newSec" list="secOptions" placeholder="Secs" style="width: 80px;">
-
+            
             <datalist id="secOptions">
                 <option value="0"></option>
                 <option value="5"></option>
@@ -107,8 +109,9 @@
                 <option value="55"></option>
             </datalist>
 
-            <input type="cycle" id="newCycle" list="cycOptions" placeholder="No. of Cycles" style="width: 100px;">
-            <datalist id="cycOptions">
+             <input type="number" id="newCycles" list="cycleOptions" placeholder="No. of Cycles" style="width: 115px;">
+            
+            <datalist id="cycleOptions">
                 <option value="1"></option>
                 <option value="2"></option>
                 <option value="3"></option>
@@ -119,48 +122,93 @@
                 <option value="8"></option>
                 <option value="9"></option>
                 <option value="10"></option>
+                <option value="11"></option>
+                <option value="12"></option>
             </datalist>
         </div>
 
-        <button onclick="sendNewTask()" style="margin-top: 10px; background-color: #28a745; color: white; border: none; padding: 10px; cursor: pointer;">
-            + Add Cycle
+
+        <button class="addbtn" onclick="sendNewTask()" style="font-size: 18px; margin-top: 10px; border: none; padding: 10px; cursor: pointer;">
+            + Add Task
         </button>  
+
     </div>
-    <p>DEBUG DATA: {{ tasks }}</p>
-    <table>
-        <tr>
-            <th>Task</th>
-            <th>Added</th>
-            <th>Actions</th>
-        </tr>
-        
-        {% for task in tasks %}
-        
+        <p>DEBUG DATA: {{ tasks }}</p>
+        <table>
             <tr>
-                <td>{{ loop.index }}</td>
-                <td>Soak at {{ task.temp }}°C for {{ task.hour }}hr {{ task.min }}min {{ task.sec }}sec</td>
-                <td> 
-                    <a href="/api/delete/{{ task.id }}">
-                        <button>Delete</button>
-                    </a>   
-                </td>
+                <th>Task</th>
+                <th>Added</th>
+                <th>Actions</th>
             </tr>
-        {% endfor %}
-    </table>
+            
+            <tbody id="task-table-body">
+                {% for task in tasks %}
+                    {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="right">
+        <h2>
+            <div> <span id="task-display">Loading current task...</span></div>
+        </h2>
+        <span id="temptime" style="display: flex;">
+            <div>Time Left: <span id="time">00:00:00</span></div>
+            <div>Current Temp: <span id="current-temp">{{ current_temp }}</span>°C</div>
+        </span>
+
+        <div id="startstop" style="display: flex; gap: 20px; margin-top: 20px;">
+            <button onclick="sendStartCommand(this)" class="greenbtn" style="font-size: 30px; margin: 10px 30px 10px 30px; border: none; padding: 10px;" {% if current_task %} disabled {% endif %}>Start</button>
+            <script>
+                async function sendStartCommand(btn) {
+                    try {
+                        let response = await fetch('/api/start');
+
+                        if (response.ok) {
+                            window.location.reload(); 
+                        } else {
+                            let errorMessage = await response.text();
+                            alert("Error: " + errorMessage);
+                        }
+                    } catch (error) {
+                        console.error("Network Error:", error);
+                        alert("Failed to connect to the oven controller.");
+                    }
+                }
+            </script>
+            <button onclick="sendStopCommand(this)" class="redbtn" style="font-size: 30px; margin: 10px 30px 10px 30px; border: none; padding: 10px;" {% if not current_task %} disabled {% endif %}>Stop</button>
+            <script>
+                async function sendStopCommand(btn) {
+                    try {
+                        let response = await fetch('/api/stop');
+
+                        if (response.ok) {
+                            window.location.reload(); 
+                        } else {
+                            let errorMessage = await response.text();
+                            alert("Error: " + errorMessage);
+                        }
+                    } catch (error) {
+                        console.error("Network Error:", error);
+                        alert("Failed to connect to the oven controller.");
+                    }
+                }
+            </script>
+        </div>
+    </div>
+
 </main>
 
 <script>
     async function sendNewTask() {
     // 1. Grab the values from the HTML boxes
-    const tempVal1 = document.getElementById('newTemp1').value;
-    const tempVal2 = document.getElementById('newTemp2').value;
+    const tempVal = document.getElementById('newTemp').value;
     const hrsVal = document.getElementById('newHrs').value || 0; // Default to 0 if empty
     const minVal = document.getElementById('newMin').value || 0;
     const secVal = document.getElementById('newSec').value || 0;
 
     // 2. Safety Check
-    if (!tempVal1 || !tempVal2) {
-        alert("Please enter both temperatures!");
+    if (!tempVal) {
+        alert("Please enter a temperature!");
         return;
     }
 
@@ -215,6 +263,149 @@
         alert("Failed to connect to the oven controller.");
     }
 }
+
+let activeTimerInterval = null;
+function startTimer(duration, startTime, display) {
+    if (activeTimerInterval) {
+        clearInterval(activeTimerInterval);
+    }
+    function timer() {
+        var elapsed = (Date.now() - (startTime * 1000)) / 1000;
+        var diff = duration - elapsed;  
+        
+        if (diff <= 0) {
+            clearInterval(activeTimerInterval);
+            display.textContent = "00:00:00";
+            isTimerRunning = false
+            return;
+        }
+
+        hours = (diff / 3600) | 0;
+        minutes = ((diff % 3600) / 60) | 0;
+        seconds = (diff % 60) | 0;
+
+        hours = hours < 10 ? "0" + hours : hours;
+        minutes = minutes < 10 ? "0" + minutes : minutes;
+        seconds = seconds < 10 ? "0" + seconds : seconds;
+
+        display.textContent = hours + ":" + minutes + ":" + seconds; 
+
+    };
+    timer();
+    var activeTimerInterval = setInterval(timer, 1000)
+}
+    let currentQueueString = "";
+    let isTimerRunning = false; 
+    let activeTimerStartTime = 0;
+    async function checkOvenStatus() {
+        try {
+            // 1. Ask the server for the live status
+            let response = await fetch('/api/status');
+            let data = await response.json();
+            
+            let display = document.querySelector('#time');
+
+            // 2. Check the conditions
+            if (data.state === "SOAKING" && data.start_time !== -1) {
+                
+                // If it is soaking, start timer
+                if (!isTimerRunning || activeTimerStartTime !== data.start_time) {
+                    console.log("Oven reached SOAKING temp! Initializing Timer...");
+                    
+                    if (typeof startTimer === "function") {
+                        startTimer(data.duration, data.start_time, display);
+                        isTimerRunning = true; // Lock the door
+                        activeTimerStartTime = data.start_time;
+                    }
+                }
+            } else {
+                // If it goes back to IDLE or HEATING, reset our lock
+                if (isTimerRunning) {
+                    console.log("Task stopped or finished.");
+                    isTimerRunning = false; // Unlock so the NEXT task can run
+                    display.textContent = "00:00:00";
+                    activeTimerStartTime = 0;
+                }
+            }
+
+            let currentTempDisplay = document.querySelector('#current-temp');
+            currentTempDisplay.textContent = data.temperature;
+
+            let taskdisplay = document.querySelector('#task-display');
+            if (data.type == "Task") {
+                taskdisplay.textContent = `Current task: Soak at ${data.set_temp}°C for ${data.hour}hr ${data.min}min ${data.sec}sec`;
+            } else if (data.type == "Idle") {
+                taskdisplay.textContent = `Current task: Idle for ${data.hour}hr ${data.min}min ${data.sec}sec`;
+            } else if (data.type == "Cycle") {
+                taskdisplay.textContent = `Current task: Cycle between ${data.temp1}°C and ${data.temp2}°C for ${data.hour}hr ${data.min}min ${data.sec}sec`;
+            } else {
+                taskdisplay.textContent = "No active task."
+            }
+
+            let start_button = document.querySelector(".greenbtn");
+            let stop_button = document.querySelector(".redbtn");
+            
+            //Indicates there is no task running
+            if (data.id === -1) {
+                start_button.disabled = false;
+                stop_button.disabled = true;
+            } else {
+                start_button.disabled = true;
+                stop_button.disabled = false;
+            }
+
+            let newQueueString = JSON.stringify(data.queue);
+
+            // Only redraw the table if the queue actually changed (e.g., a task finished or was added)
+            if (newQueueString !== currentQueueString) {
+                currentQueueString = newQueueString;
+                let tbody = document.querySelector('#task-table-body');
+                let newHTML = '';
+
+                // Loop through the array Python sent us
+                data.queue.forEach((task, index) => {
+                    let taskText = '';
+                    if (task.type === "Task") {
+                        taskText = `Soak at ${task.temp}°C for ${task.hour}hr ${task.min}min ${task.sec}sec`;
+                    } else if (task.type === "Idle") {
+                        taskText = `Idle for ${task.hour}hr ${task.min}min ${task.sec}sec`;
+                    }
+                    else if (task.type === "Cycle") {
+                        taskText = `Cycle between ${task.temp1}°C and ${task.temp2}°C for ${task.hour}hr ${task.min}min ${task.sec}sec`;
+                    }
+
+                    // Build the HTML for each row
+                    newHTML += `
+                        <tr>
+                            <td>${index + 1}</td>
+                            <td>
+                                ${taskText}
+                                <a href="/api/delete/${task.id}">
+                                    <button>Delete</button>
+                                </a>   
+                            </td>
+                        </tr>
+                    `;
+                });
+
+            // Replace the old HTML with the new dynamic HTML
+            tbody.innerHTML = newHTML;
+        }
+
+        } catch (error) {
+            console.error("Failed to fetch oven status:", error);
+        }
+    }
+
+    // 3. Start the continuous polling loop as soon as the page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log("Connecting to live status feed...");
+        checkOvenStatus(); // Check immediately on load
+        // Call checkOvenStatus() every 1000 milliseconds (1 second)
+        setInterval(checkOvenStatus, 1000); 
+    });
+
+
 </script>
 
 
