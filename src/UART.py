@@ -1,5 +1,7 @@
 import serial
 import serial.rs485
+import serial.tools.list_ports
+import time
 
 '''
 UART Master class for serial communication
@@ -74,3 +76,45 @@ class UARTMaster:
             return self.ser.readline().decode('ascii').strip()
         return None
     
+    def autodetect_oven_port():
+        print("Scanning for oven controller...")
+        
+        # 1. Get a list of ALL hardware ports plugged into the laptop
+        available_ports = serial.tools.list_ports.comports()
+        
+        if not available_ports:
+            print("No serial cables detected. Plug in the USB adapter!")
+            return None
+
+        # 2. Test them one by one
+        for port_info in available_ports:
+            test_port = port_info.device # e.g., 'COM3', 'COM4'
+            print(f"Pinging {test_port}...")
+            
+            try:
+                # Open the port temporarily with a very short timeout
+                temp_connection = serial.Serial(test_port, baudrate=9600, timeout=1)
+                
+                # Send a harmless Espec command (like asking for the monitor status)
+                temp_connection.write(b'MON?,1\r\n')
+                
+                # Wait a split second, then read the response
+                time.sleep(0.1) 
+                response = temp_connection.readline().decode('ascii').strip()
+                
+                # Always close the temporary connection!
+                temp_connection.close()
+                
+                # 3. If we get text back, we found the winner!
+                if response:
+                    print(f"SUCCESS: Oven detected on {test_port}!")
+                    return test_port
+
+            except serial.SerialException:
+                # If the port is locked by another program (Access Denied), 
+                # or isn't actually RS-232, Python silently skips it and tries the next one.
+                pass
+                
+        print("Scan complete. Oven did not respond on any port.")
+        return None
+        

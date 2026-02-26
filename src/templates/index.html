@@ -118,8 +118,6 @@
         <table>
             <tr>
                 <th>Task</th>
-                <th>Added</th>
-                <th>Actions</th>
             </tr>
             
             <tbody id="task-table-body">
@@ -218,6 +216,7 @@
             },
             //Bundle the data into a text string
             body: JSON.stringify({
+                mode: "soak",
                 temp: tempVal,
                 hours: hrsVal,
                 minutes: minVal,
@@ -315,11 +314,19 @@ function startTimer(duration, startTime, display) {
             let taskdisplay = document.querySelector('#task-display');
             if (data.type == "Task") {
                 taskdisplay.textContent = `Current task: Soak at ${data.set_temp}°C for ${data.hour}hr ${data.min}min ${data.sec}sec`;
-            } else if (data.type == "Idle") {
+            } 
+            else if (data.type == "Idle") {
                 taskdisplay.textContent = `Current task: Idle for ${data.hour}hr ${data.min}min ${data.sec}sec`;
-            } else if (data.type == "Cycle") {
-                taskdisplay.textContent = `Current task: Cycle between ${data.temp1}°C and ${data.temp2}°C for ${data.hour}hr ${data.min}min ${data.sec}sec`;
-            } else {
+            } 
+            else if (data.type == "Cycle") {
+                if (data.cycles == 1) {
+                    taskdisplay.textContent = `Current task: Cycle between ${data.set_temp}°C and ${data.set_temp1}°C for ${data.hour}hr ${data.min}min ${data.sec}sec`;
+                } 
+                else {
+                    taskdisplay.textContent = `Current task: ${data.cycles} Cycles between ${data.set_temp}°C and ${data.set_temp1}°C for ${data.hour}hr ${data.min}min ${data.sec}sec`;
+                }
+            }
+            else {
                 taskdisplay.textContent = "No active task."
             }
 
@@ -352,7 +359,7 @@ function startTimer(duration, startTime, display) {
                         taskText = `Idle for ${task.hour}hr ${task.min}min ${task.sec}sec`;
                     }
                     else if (task.type === "Cycle") {
-                        taskText = `Cycle between ${task.temp1}°C and ${task.temp2}°C for ${task.hour}hr ${task.min}min ${task.sec}sec`;
+                        taskText = `${task.cycles} Cycles between ${task.temp}°C and ${task.temp1}°C for ${task.hour}hr ${task.min}min ${task.sec}sec`;
                     }
 
                     // Build the HTML for each row

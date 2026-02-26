@@ -33,12 +33,14 @@ task_started = False
 class TaskList(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     temp = db.Column(db.Float, default=0)
+    temp1 = db.Column(db.Float, default=0) #For cycling mode
     hour = db.Column(db.Integer, default=0)
     min = db.Column(db.Integer, default=0)
     sec = db.Column(db.Integer, default=0)
     type = db.Column(db.String(50), default="Task")
     start_time = db.Column(db.Float, default=0)
     date_created = db.Column(db.DateTime, default=datetime.utcnow)
+    cycles = db.Column(db.Integer, default=0) #For cycling mode
 
 @app.route('/', methods=['POST', 'GET'])
 def index():
@@ -61,21 +63,44 @@ def add_task_route():
             if request.is_json:
                 data = request.json
                 
-                #Extract Data
-                t_temp = float(data.get('temp'))
-                t_h = int(data.get('hours', 0))
-                t_m = int(data.get('minutes', 0))
-                t_s = int(data.get('seconds', 0))
+                #For Task type "soak"
+                t_mode = data.get('mode')
+                if t_mode == "soak":
+                    #Extract Data
+                    t_temp = float(data.get('temp'))
+                    t_h = int(data.get('hours', 0))
+                    t_m = int(data.get('minutes', 0))
+                    t_s = int(data.get('seconds', 0))
 
-                #Add to DATABASE (Logging)
-                new_db_task = TaskList(temp=t_temp, hour=t_h, min=t_m, sec=t_s, type="Task")
-                db.session.add(new_db_task)
-                db.session.commit()
+                    #Add to DATABASE (Logging)
+                    new_db_task = TaskList(temp=t_temp, hour=t_h, min=t_m, sec=t_s, type="Task")
+                    db.session.add(new_db_task)
+                    db.session.commit()
+                    
+                    #Send to Oven
+                    oven.AddTask(t_temp, t_h, t_m, t_s, taskname="Task", db_id=new_db_task.id)
+
+                    return jsonify({"status": "success", "message": "Task added to Oven & DB"})
                 
-                #Send to Oven
-                oven.AddTask(t_temp, t_h, t_m, t_s, taskname="Task", db_id=new_db_task.id)
+                #For Task type "cycle"
+                elif t_mode == "cycle":
+                    #Extract Data
+                    t_temp1 = float(data.get('temp1'))
+                    t_temp2 = float(data.get('temp2'))
+                    t_h = int(data.get('hours', 0))
+                    t_m = int(data.get('minutes', 0))
+                    t_s = int(data.get('seconds', 0))
+                    t_cycles = int(data.get('cycles', 1))
 
-                return jsonify({"status": "success", "message": "Task added to Oven & DB"})
+                    #Add to DATABASE (Logging)
+                    new_db_task = TaskList(temp=t_temp1, temp1=t_temp2, cycles=t_cycles, hour=t_h, min=t_m, sec=t_s, type="Cycle")
+                    db.session.add(new_db_task)
+                    db.session.commit()
+                    
+                    #Send to Oven
+                    oven.AddCycle(t_temp1, t_temp2, t_h, t_m, t_s, t_cycles, taskname="Cycle", db_id=new_db_task.id)
+
+                    return jsonify({"status": "success", "message": "Cycle Task added to Oven & DB"})
 
             else:
                 #Fallback for standard HTML Forms
@@ -95,9 +120,7 @@ def del_task_route(id):
         oven.deleteTask(id)
         return redirect('/')
     except Exception as e:
-        # --- DEBUGGING LINE ---
         print(f"CRITICAL ERROR: {e}") 
-        # ----------------------
         return f'There was a problem deleting that task: {e}'
     
 @app.route('/api/start')
@@ -125,7 +148,7 @@ def start_task_route():
             return "Task Started", 200
         
         except Exception as e:
-            return f'There was a problem starting the task: {e}'    
+            return f'There was a problem starting the task: {e}'
     
 @app.route('/api/stop')
 def stop_task_route():
@@ -159,7 +182,7 @@ def update_status_loop():
             oven.task_done = False
             start_task_route()
             
-        if oven_status['state'] == "SOAKING" and current_task and current_task.start_time == -1:
+        if current_task and current_task.start_time == -1:
             current_task.start_time = datetime.now().timestamp()
             
 
@@ -176,9 +199,11 @@ def get_status():
             "id": t.id,
             "type": t.type,
             "temp": t.temp,
+            "temp1": t.temp1 if t.type == "Cycle" else None,
             "hour": t.hour,
             "min": t.min,
-            "sec": t.sec
+            "sec": t.sec,
+            "cycles": t.cycles if t.type == "Cycle" else None
         })
     
     if current_task is None:
@@ -186,7 +211,7 @@ def get_status():
             "state": "IDLE", 
             "start_time": -1, 
             "duration": 0,
-            "temperature": "-",
+            "temperature": oven.temperature if hasattr(oven, 'temperature') else "-",
             "type": "None",
             "id": -1,
             "queue": queue_data
@@ -197,7 +222,7 @@ def get_status():
     total_seconds = (current_task.hour * 3600) + \
                     (current_task.min * 60) + \
                     current_task.sec
-                    
+    
     # 3. Send back the live facts
     return jsonify({
         "state": oven.state,  # Make sure this points to your oven's live hardware state
@@ -208,6 +233,8 @@ def get_status():
         "sec": current_task.sec if hasattr(current_task, 'sec') else 0,
         "temperature": oven.temperature if hasattr(oven, 'temperature') else "-",
         "set_temp": current_task.temp if hasattr(current_task, 'temp') else -1,
+        "set_temp1": current_task.temp1 if hasattr(current_task, 'temp1') else -1,
+        "cycles": current_task.cycles if hasattr(current_task, 'cycles') else -1,
         "type": current_task.type if hasattr(current_task, 'type') else "None",
         "id": current_task.id if hasattr(current_task, 'id') else -1,
         "queue": queue_data
@@ -215,10 +242,9 @@ def get_status():
     
 if __name__ == '__main__':
     with app.app_context():
-        # 3. Print the path so you can copy-paste it into your file explorer
         print(f"DATABASE LOG: Looking for DB at: {db_path}")
         
-        # 4. Wipe it and recreate it to fix the 'type' column error
+        #Wipe it and recreate it to fix the 'type' column error
         db.drop_all() 
         db.create_all()
         print("DATABASE LOG: Tables recreated successfully!")

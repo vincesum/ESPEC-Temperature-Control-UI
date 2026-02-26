@@ -133,12 +133,9 @@
         </button>  
 
     </div>
-        <p>DEBUG DATA: {{ tasks }}</p>
         <table>
             <tr>
                 <th>Task</th>
-                <th>Added</th>
-                <th>Actions</th>
             </tr>
             
             <tbody id="task-table-body">
@@ -201,14 +198,16 @@
 <script>
     async function sendNewTask() {
     // 1. Grab the values from the HTML boxes
-    const tempVal = document.getElementById('newTemp').value;
+    const tempVal1 = document.getElementById('newTemp1').value;
+    const tempVal2 = document.getElementById('newTemp2').value;
     const hrsVal = document.getElementById('newHrs').value || 0; // Default to 0 if empty
     const minVal = document.getElementById('newMin').value || 0;
     const secVal = document.getElementById('newSec').value || 0;
+    const cycleVal = document.getElementById('newCycles').value || 1;
 
     // 2. Safety Check
-    if (!tempVal) {
-        alert("Please enter a temperature!");
+    if (!tempVal1 || !tempVal2) {
+        alert("Please enter both temperatures!");
         return;
     }
 
@@ -227,6 +226,11 @@
         return;
     }
 
+    if (Number(cycleVal) <= 0) {
+        alert("Error, number of cycles must be at least 1.")
+        return;
+    }
+
     //Network Request
     try {
         const response = await fetch('/api/add_task', {
@@ -237,10 +241,13 @@
             },
             //Bundle the data into a text string
             body: JSON.stringify({
-                temp: tempVal,
+                mode: "cycle",
+                temp1: tempVal1,
+                temp2: tempVal2,
                 hours: hrsVal,
                 minutes: minVal,
-                seconds: secVal
+                seconds: secVal,
+                cycles: cycleVal
             })
         });
 
@@ -250,8 +257,9 @@
         if (data.status === 'success') {
             console.log("Task added!");
             //Clear the boxes so the user can type again
-            document.getElementById('newTemp').value = "";
-            
+            document.getElementById('newTemp1').value = "";
+            document.getElementById('newTemp2').value = "";
+
             //Refresh table to reflect changes
             window.location.reload();
         } else {
@@ -337,7 +345,11 @@ function startTimer(duration, startTime, display) {
             } else if (data.type == "Idle") {
                 taskdisplay.textContent = `Current task: Idle for ${data.hour}hr ${data.min}min ${data.sec}sec`;
             } else if (data.type == "Cycle") {
-                taskdisplay.textContent = `Current task: Cycle between ${data.temp1}°C and ${data.temp2}°C for ${data.hour}hr ${data.min}min ${data.sec}sec`;
+                if (data.cycles == 1) {
+                    taskdisplay.textContent = `Current task: Cycle between ${data.set_temp}°C and ${data.set_temp1}°C for ${data.hour}hr ${data.min}min ${data.sec}sec`;
+                } else {
+                    taskdisplay.textContent = `Current task: ${data.cycles} Cycles between ${data.set_temp}°C and ${data.set_temp1}°C for ${data.hour}hr ${data.min}min ${data.sec}sec`;
+                }
             } else {
                 taskdisplay.textContent = "No active task."
             }
@@ -371,22 +383,26 @@ function startTimer(duration, startTime, display) {
                         taskText = `Idle for ${task.hour}hr ${task.min}min ${task.sec}sec`;
                     }
                     else if (task.type === "Cycle") {
-                        taskText = `Cycle between ${task.temp1}°C and ${task.temp2}°C for ${task.hour}hr ${task.min}min ${task.sec}sec`;
+                        if (task.cycles == 1) {
+                            taskText = `Cycle between ${task.temp}°C and ${task.temp1}°C for ${task.hour}hr ${task.min}min ${task.sec}sec`;
+                        } else {
+                        taskText = `${task.cycles} Cycles between ${task.temp}°C and ${task.temp1}°C for ${task.hour}hr ${task.min}min ${task.sec}sec`;
                     }
+                }
 
-                    // Build the HTML for each row
-                    newHTML += `
-                        <tr>
-                            <td>${index + 1}</td>
-                            <td>
-                                ${taskText}
-                                <a href="/api/delete/${task.id}">
-                                    <button>Delete</button>
-                                </a>   
-                            </td>
-                        </tr>
-                    `;
-                });
+                // Build the HTML for each row
+                newHTML += `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>
+                            ${taskText}
+                            <a href="/api/delete/${task.id}">
+                                <button>Delete</button>
+                            </a>   
+                        </td>
+                    </tr>
+                `;
+            });
 
             // Replace the old HTML with the new dynamic HTML
             tbody.innerHTML = newHTML;

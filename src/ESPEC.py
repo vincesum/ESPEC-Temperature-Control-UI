@@ -364,10 +364,10 @@ class SH241():
         task = Task(temp, hours, minutes, seconds, taskname, db_id)
         self._tasklist.enqueue(task)
         
-    def AddCycle(self, temp1, temp2, hours, minutes, seconds, totalCycles, db_id="None"):
+    def AddCycle(self, temp1, temp2, hours, minutes, seconds, totalCycles, taskname="Cycle", db_id="None"):
         if not hasattr(self, '_tasklist'):
             self._tasklist = LinkedList()
-        task = Cycle(temp1, temp2, hours, minutes, seconds, totalCycles, "Cycle", db_id)
+        task = Cycle(temp1, temp2, hours, minutes, seconds, totalCycles, taskname, db_id)
         self._tasklist.enqueue(task)
         
     def AddIdle(self, hours, minutes, seconds):
@@ -401,8 +401,9 @@ class SH241():
             return
     
     def startNextTask(self):
-        self.task_done = True
-        self.startTask()    
+        if (self.mode == "SOAK"):
+            self.task_done = True
+        self.startTask()
     
     def startTask(self):
         #Cancel existing timers
@@ -470,8 +471,10 @@ class SH241():
             self._tasklist.pop_head()
             self.currentCycle = 1
             self.halfCycle = 0
+            self.task_done = True
             self.startNextTask()
             return
+        self.mode = "CYCLE"
         durationInSeconds = hours * 3600 + minutes * 60 + seconds
         if (state == 0):
             print(f"Starting cycle {self.currentCycle}: Soak at {temp1}°C for {hours}hr {minutes}min {seconds}s")
@@ -550,7 +553,7 @@ class SH241():
     def startTemperatureSoak(self, target_temp, durationInSeconds):
         if self.stop_task:
             return
-        self.mode = "SOAKING"
+        self.mode = "SOAK"
         self.SetTemp(target_temp)
         self.SetModeConstant()
         self.temperatureQuerySchedule(target_temp, durationInSeconds)
