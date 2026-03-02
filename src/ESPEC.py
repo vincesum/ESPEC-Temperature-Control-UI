@@ -34,11 +34,13 @@ class SH241():
         self.state = "IDLE" #States: IDLE, HEATING, COOLING, SOAKING
         self.task_done = False
         self.stop_task = False
+        
 
     def OpenChannel(self):
         self._instr.Open()
         self._instr.Purge()
-        
+        self.SetModeStandby()
+        threading.Thread(target=self.tempCheckerLoop, daemon=True).start()
 
     def GetROMVersion(self):
         self._instr.Write('%i,ROM?' % self._address)
@@ -401,7 +403,7 @@ class SH241():
             return
     
     def startNextTask(self):
-        if (self.mode == "SOAK"):
+        if (self.mode != "CYCLE"):
             self.task_done = True
         self.startTask()
     
@@ -445,7 +447,7 @@ class SH241():
         else:
             #Half cycle refers to the period where temperature goes to either temp1 or temp2 and soaks
             #Full cycle is the process of soaking at both temperatures for one entire duration
-            
+            self.state = "CYCLE"
             if (self.halfCycle >= 2):
                 self.currentCycle += 1
                 self.halfCycle = 0
@@ -483,6 +485,11 @@ class SH241():
             self.startTemperatureSoak(temp2, durationInSeconds)
             print(f"Starting cycle {self.currentCycle}: Soak at {temp2}°C for {hours}hr {minutes}min {seconds}s")
     
+    #Loop that reads temperature every 3 seconds
+    def tempCheckerLoop(self):
+        while True:
+            self.temperature = self.GetTempSilent()
+            time.sleep(3.0) # Pauses this specific thread for 3 seconds
     
     def deleteTask(self, target_db_id):
         # Safety check
@@ -527,14 +534,11 @@ class SH241():
     #Then sets chamber to standby after timer ends
     def checkTempCallback(self, target, durationInSeconds):
         
-        current_temp = self.GetTempSilent()
         hours = durationInSeconds // 3600
         minutes = (durationInSeconds % 3600) // 60
         seconds = durationInSeconds % 60
-        self.temperature = current_temp
-        
         #When target temperature is reached, start soaking for specified duration
-        if abs(float(current_temp) - target) <= 1:
+        if abs(float(self.temperature) - target) <= 1:
             dateTime = datetime.now()
             self.state = "SOAKING"  # Indicate soaking state started
             print(f"Target {target}°C Reached at {dateTime}. Starting Soak for {hours}hr {minutes}min {seconds}s.")
@@ -546,14 +550,13 @@ class SH241():
         else:
             # Target missed. Schedule the next check.
             self.temperatureQuerySchedule(target, durationInSeconds)
-            self.state = "HEATING" if float(current_temp) < target else "COOLING"
-            print(f"Target Temperature= {target}°C, Current Temperature= {current_temp}°C, rechecking in 3 seconds.")
+            self.state = "HEATING" if float(self.temperature) < target else "COOLING"
+            print(f"Target Temperature= {target}°C, Current Temperature= {self.temperature}°C, rechecking in 3 seconds.")
             
     #Sets the oven to soak at a target temperature for a specified duration
     def startTemperatureSoak(self, target_temp, durationInSeconds):
         if self.stop_task:
             return
-        self.mode = "SOAK"
         self.SetTemp(target_temp)
         self.SetModeConstant()
         self.temperatureQuerySchedule(target_temp, durationInSeconds)

@@ -24,3 +24,12 @@ venv\Scripts\activate
 
 # 4. Install all the packages from your list
 pip install -r requirements.txt
+
+
+Packing app into executable file
+
+# 1. Install pyinstaller with: pip install pyinstaller
+
+# 2. Navigate to the folder containing app.py and run this: pyinstaller --onefile --noconsole --add-data "templates;templates" --add-data "static;static" app.py
+
+

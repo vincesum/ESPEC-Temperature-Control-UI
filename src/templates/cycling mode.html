@@ -135,7 +135,7 @@
     </div>
         <table>
             <tr>
-                <th>Task</th>
+                <th>Tasklist</th>
             </tr>
             
             <tbody id="task-table-body">
@@ -151,6 +151,7 @@
         <span id="temptime" style="display: flex;">
             <div>Time Left: <span id="time">00:00:00</span></div>
             <div>Current Temp: <span id="current-temp">{{ current_temp }}</span>°C</div>
+            <div> <span id="current-cycle"> </span></div>
         </span>
 
         <div id="startstop" style="display: flex; gap: 20px; margin-top: 20px;">
@@ -354,6 +355,14 @@ function startTimer(duration, startTime, display) {
                 taskdisplay.textContent = "No active task."
             }
 
+            let currentCycleDisplay = document.querySelector('#current-cycle');
+            if (data.type == "Cycle") {
+                currentCycleDisplay.textContent = `Cycle ${data.currCycles} out of ${data.cycles}`;
+            }
+            else {
+                currentCycleDisplay.textContent = "";
+            }
+
             let start_button = document.querySelector(".greenbtn");
             let stop_button = document.querySelector(".redbtn");
             
@@ -419,8 +428,12 @@ function startTimer(duration, startTime, display) {
         checkOvenStatus(); // Check immediately on load
         // Call checkOvenStatus() every 1000 milliseconds (1 second)
         setInterval(checkOvenStatus, 1000); 
+        setInterval(() => {fetch('/api/heartbeat').catch((error) => {
+            // If the fetch fails, it just means the server is already dead.
+            console.log("Heartbeat failed, server might be offline.");
+            });
+        }, 2000);
     });
-
 
 </script>
 

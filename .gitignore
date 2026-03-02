@@ -1,0 +1,16 @@
+#PyInstaller Folders & Files
+build/
+dist/
+*.spec
+
+#Python Cache (Hidden files Python makes to run faster)
+__pycache__/
+*.pyc
+
+#Your Virtual Environment
+venv/
+env/
+
+#Your Local Database
+*.db
+instance/

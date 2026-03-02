@@ -18,6 +18,7 @@ class UARTMaster:
         self.ser = None
         self.use_rs485 = use_rs485
         self.address = device_address  # Store the target device address
+        self.oven_connected = False
 
     def CreateDeviceInfoList(self):
         pass
@@ -27,26 +28,32 @@ class UARTMaster:
 
     #Opens the serial port
     def Open(self):
-        self.ser = serial.Serial(
-            port=self.port,
-            baudrate=self.baudrate,
-            bytesize=serial.EIGHTBITS,
-            parity=serial.PARITY_NONE,
-            stopbits=serial.STOPBITS_ONE,
-            timeout=self.timeout
-        )
-        if self.use_rs485:
-            # This tells the driver to toggle RTS high while sending
-            # Note: Not all drivers support this. If yours fails, you need a hardware
-            # adapter with "Automatic Send Data Control".
-            rs485_conf = serial.rs485.RS485Settings(
-                rts_level_for_tx=True, 
-                rts_level_for_rx=False,
-                loopback=False,
-                delay_before_tx=None,
-                delay_before_rx=None
+        try:
+            self.ser = serial.Serial(
+                port=self.port,
+                baudrate=self.baudrate,
+                bytesize=serial.EIGHTBITS,
+                parity=serial.PARITY_NONE,
+                stopbits=serial.STOPBITS_ONE,
+                timeout=self.timeout
             )
-            self.ser.rs485_mode = rs485_conf
+            if self.use_rs485:
+                # This tells the driver to toggle RTS high while sending
+                # Note: Not all drivers support this. If yours fails, you need a hardware
+                # adapter with "Automatic Send Data Control".
+                rs485_conf = serial.rs485.RS485Settings(
+                    rts_level_for_tx=True, 
+                    rts_level_for_rx=False,
+                    loopback=False,
+                    delay_before_tx=None,
+                    delay_before_rx=None,
+                )
+                self.ser.rs485_mode = rs485_conf
+            self.oven_connected = True
+        except serial.SerialException as e:
+            print(f"Error opening serial port: {e}")
+            self.ser = None
+            self.oven_connected = False
 
     def Close(self):
         if self.ser:

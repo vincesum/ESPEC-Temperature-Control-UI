@@ -5,9 +5,11 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, time
 from ESPEC import SH241
 import threading
+import webbrowser
+import time
 
 oven = SH241(address=1)
-#oven.OpenChannel()
+oven.OpenChannel()
 #oven.SetModeStandby()
 
 oven_status = {
@@ -15,7 +17,7 @@ oven_status = {
     "mode": "STANDBY",
     "temp": 0,
     "state": "IDLE",
-    "task_done": False
+    "task_done": False,
 }
 
 
@@ -29,6 +31,8 @@ db = SQLAlchemy(app)
 current_task = None
 oven_thread = None
 task_started = False
+oven_connected = False
+cycle_id = 0 #keeps track of each half cycle to reset timer for cycling mode
 
 class TaskList(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -41,6 +45,7 @@ class TaskList(db.Model):
     start_time = db.Column(db.Float, default=0)
     date_created = db.Column(db.DateTime, default=datetime.utcnow)
     cycles = db.Column(db.Integer, default=0) #For cycling mode
+    currCycles = db.Column(db.Integer, default=1)
 
 @app.route('/', methods=['POST', 'GET'])
 def index():
@@ -173,6 +178,23 @@ def update_status_loop():
         oven_status["temp"] = oven.temperature
         oven_status["state"] = oven.state
         oven_status["task_done"] = oven.task_done
+        
+        #Check for heartbeat every 1 second to fix server not closing after browser close bug
+        global last_heartbeat
+        #70s leeway
+        if time.time() - last_heartbeat > 70:
+            print("Browser closed or lost connection! Shutting down...")
+            
+            #Safely stop the oven before quitting
+            try:
+                if 'oven_connected' in globals() and oven_connected:
+                    oven.stopTask()
+            except:
+                pass
+                
+            #Kill the invisible background server
+            os._exit(0)
+            
         threading.Event().wait(1)  # Update every 1 seconds
         global current_task
         global task_started
@@ -182,7 +204,12 @@ def update_status_loop():
             oven.task_done = False
             start_task_route()
             
-        if current_task and current_task.start_time == -1:
+        global cycle_id
+        if oven.halfCycle != cycle_id and current_task:
+            current_task.start_time = -1
+            cycle_id = oven.halfCycle
+            
+        if oven_status["state"] == "SOAKING" and current_task and current_task.start_time == -1:
             current_task.start_time = datetime.now().timestamp()
             
 
@@ -235,10 +262,40 @@ def get_status():
         "set_temp": current_task.temp if hasattr(current_task, 'temp') else -1,
         "set_temp1": current_task.temp1 if hasattr(current_task, 'temp1') else -1,
         "cycles": current_task.cycles if hasattr(current_task, 'cycles') else -1,
+        "currCycles": oven.currentCycle,
         "type": current_task.type if hasattr(current_task, 'type') else "None",
         "id": current_task.id if hasattr(current_task, 'id') else -1,
         "queue": queue_data
     })
+    
+@app.route('/api/shutdown')
+def shutdown_server():
+    print("Shutting down the server...")
+    
+    # Optional Safety Check: Stop the oven before quitting!
+    try:
+        if oven_connected:
+            oven.stopTask()
+    except Exception as e:
+        print(f"Could not stop oven: {e}")
+
+    # This instantly kills the invisible Python process and all background loops
+    os._exit(0)
+    
+# Heartbeat to detect if browser is still open in order to stop server when browser closes
+last_heartbeat = time.time()
+@app.route('/api/heartbeat')
+def heartbeat():
+    global last_heartbeat
+    last_heartbeat = time.time() # Reset the clock!
+    return "OK", 200
+
+
+    
+def open_browser():
+    #This automatically opens the default web browser with the local server
+    webbrowser.open_new("http://127.0.0.1:5000/")
+    
     
 if __name__ == '__main__':
     with app.app_context():
@@ -257,4 +314,5 @@ if __name__ == '__main__':
             db.session.rollback()
         update_status_loop_thread = threading.Thread(target=update_status_loop, daemon=True)
         update_status_loop_thread.start()
+        threading.Timer(1, open_browser).start()  # Open browser after a short delay
     app.run(debug=False)
