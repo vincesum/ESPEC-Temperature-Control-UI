@@ -35,53 +35,19 @@ class SH241():
         self.task_done = False
         self.stop_task = False
         
+    def SetRS485(self):
+        self._instr = UARTMaster(use_rs485=True)
+        self.OpenChannel()
+        
+    def SetRS232(self):
+        self._instr = UARTMaster(use_rs485=False)
+        self.OpenChannel()
 
     def OpenChannel(self):
         self._instr.Open()
         self._instr.Purge()
         self.SetModeStandby()
         threading.Thread(target=self.tempCheckerLoop, daemon=True).start()
-
-    def GetROMVersion(self):
-        self._instr.Write('%i,ROM?' % self._address)
-        time.sleep(1)   
-        self._romver = self._instr.Read().strip(' \r\n').replace(' ', '') 
-        print ('ROM Version: %s' % self._romver)
-        return self._romver
-
-    def GetIntStatus(self):
-        self._instr.Write('%i,SRQ?' % self._address)
-        time.sleep(1)   
-        self._intstat = self._instr.Read().strip('\r\n')
-        print ('Chamber Alarm: %s' % ('TRUE' if (int(self._intstat, 2) & 0b01000000) == 64 else 'FALSE'))
-        print ('Program Start: %s' % ('TRUE' if (int(self._intstat, 2) & 0b00100000) == 32 else 'FALSE'))
-        print ('Power Cycle: %s' % ('TRUE' if (int(self._intstat, 2) & 0b00010000) == 16 else 'FALSE'))
-        return self._intstat
-        
-    def GetIntMask(self):
-        self._instr.Write('%i,MASK?' % self._address)
-        time.sleep(1)   
-        self._intmask = self._instr.Read().strip('\r\n')
-        print ('Chamber Alarm Interrupts: %s' % ('ON' if (int(self._intmask, 2) & 0b01000000) == 64 else 'OFF'))
-        print ('Program Start Interrupts: %s' % ('ON' if (int(self._intmask, 2) & 0b00100000) == 32 else 'OFF'))
-        print ('Power Cycle Interrupts: %s' % ('ON' if (int(self._intmask, 2) & 0b00010000) == 16 else 'OFF'))
-        return self._intmask
-
-    def GetAlarmStat(self):
-        self._instr.Write('%i,ALARM?' % self._address)
-        time.sleep(1)   
-        self._alarmstat = self._instr.Read().strip('\r\n')
-        print ('Number of Alarms: %s' % self._alarmstat.split(',')[0])
-        for alarm in self._alarmstat.split(',')[1:]:
-            print ('Alarm Code: %s' % alarm)
-        return self._alarmstat
-
-    def GetKeyProtStat(self):
-        self._instr.Write('%i,KEYPROTECT?' % self._address)
-        time.sleep(1)   
-        self._keyprotstat = self._instr.Read().strip('\r\n')
-        print ('Key Protection Status: %s' % self._keyprotstat)
-        return self._keyprotstat
 
     def GetType(self):
         self._instr.Write('%i,TYPE?' % self._address)
@@ -129,7 +95,7 @@ class SH241():
 
     def GetHumid(self):
         self._instr.Write('%i,HUMI?' % self._address)
-        time.sleep(1)       
+        time.sleep(1)
         self._humi = self._instr.Read().strip('\r\n')
         print ('Present Humidity: %s' % self._humi.split(',')[0])
         print ('Target Humidity: %s' % self._humi.split(',')[1])
@@ -303,7 +269,7 @@ class SH241():
          
     def SetModeStandby(self):
         self._instr.Write('%i,MODE,STANDBY' % self._address) 
-        time.sleep(2)   
+        time.sleep(2)       
          
     def SetModeConstant(self):
         self._instr.Write('%i,MODE,CONSTANT' % self._address) 
@@ -488,8 +454,8 @@ class SH241():
     #Loop that reads temperature every 3 seconds
     def tempCheckerLoop(self):
         while True:
-            self.temperature = self.GetTempSilent()
             time.sleep(3.0) # Pauses this specific thread for 3 seconds
+            self.temperature = self.GetTempSilent()
     
     def deleteTask(self, target_db_id):
         # Safety check
@@ -521,7 +487,7 @@ class SH241():
         print(f"Task with DB ID {target_db_id} was not found in the Oven.")
         
 
-    #queries the temperature at intervals of 3 seconds and sets a timer once it reaches target
+    #Queries the temperature at intervals of 3 seconds and sets a timer once it reaches target
     def temperatureQuerySchedule(self, target, durationInSeconds):
         if self.stop_task:
             return
@@ -548,7 +514,7 @@ class SH241():
             except Exception as e:
                 print(f"CRASHED while setting timer: {e}")
         else:
-            # Target missed. Schedule the next check.
+            #Target missed. Schedule the next check.
             self.temperatureQuerySchedule(target, durationInSeconds)
             self.state = "HEATING" if float(self.temperature) < target else "COOLING"
             print(f"Target Temperature= {target}°C, Current Temperature= {self.temperature}°C, rechecking in 3 seconds.")

@@ -9,8 +9,7 @@ import webbrowser
 import time
 
 oven = SH241(address=1)
-oven.OpenChannel()
-#oven.SetModeStandby()
+#oven.OpenChannel()
 
 oven_status = {
     "task_name": "Task",
@@ -18,7 +17,7 @@ oven_status = {
     "temp": 0,
     "state": "IDLE",
     "task_done": False,
-}
+}   
 
 
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -172,6 +171,22 @@ def stop_task_route():
     except Exception as e:
         return f'There was a problem stopping the task: {e}' 
     
+@app.route('/api/rs232')
+def switch_to_rs232():
+    try:
+        oven.SetRS32()
+        return "Switched to RS232 mode."
+    except Exception as e:
+        return f'Error switching to RS232 mode: {e}'
+
+@app.route('/api/rs485')
+def switch_to_rs485():
+    try:
+        oven.SetRS485()
+        return "Switched to RS485 mode."
+    except Exception as e:
+        return f'Error switching to RS485 mode: {e}'
+
 def update_status_loop():
     while True:
         oven_status['mode'] = oven.mode

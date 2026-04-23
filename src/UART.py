@@ -11,7 +11,7 @@ Parity: None
 Stop bits: 1
 '''
 class UARTMaster:
-    def __init__(self, port='COM3', baudrate=9600, timeout=1, use_rs485=False, device_address=1):
+    def __init__(self, port='COM5', baudrate=9600, timeout=1, use_rs485=False, device_address=1):
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
@@ -39,8 +39,7 @@ class UARTMaster:
             )
             if self.use_rs485:
                 # This tells the driver to toggle RTS high while sending
-                # Note: Not all drivers support this. If yours fails, you need a hardware
-                # adapter with "Automatic Send Data Control".
+                # need a hardware adapter with "Automatic Send Data Control".
                 rs485_conf = serial.rs485.RS485Settings(
                     rts_level_for_tx=True, 
                     rts_level_for_rx=False,
@@ -66,13 +65,7 @@ class UARTMaster:
 
     def Write(self, cmd):
         if self.ser and self.ser.is_open:
-            # FIX #2: Add Address for RS-485
-            # RS-485 commands MUST start with "Address," (e.g., "1,TEMP?")
-            if self.use_rs485:
-                full_command = f"{self.address},{cmd}\r\n"
-            else:
-                full_command = f"{cmd}\r\n"
-
+            full_command = f"{cmd}\r\n"
             self.ser.write(full_command.encode('ascii'))
         else:
             print("Error: Port not open")
