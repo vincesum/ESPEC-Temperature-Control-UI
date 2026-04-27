@@ -11,7 +11,7 @@ Parity: None
 Stop bits: 1
 '''
 class UARTMaster:
-    def __init__(self, port='COM5', baudrate=9600, timeout=1, use_rs485=False, device_address=1):
+    def __init__(self, port='COM3', baudrate=9600, timeout=1, use_rs485=False, device_address=1):
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
