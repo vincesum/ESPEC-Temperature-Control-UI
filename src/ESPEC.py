@@ -54,7 +54,6 @@ class SH241():
         time.sleep(1)   
         self._type = self._instr.Read().strip('\r\n')
         print ('Dry-bulb Sensor: %s' % self._type.split(',')[0])
-        #print ('Wet-bulb Sensor: %s' % self._type.split(',')[1])
         print ('Temperature Controller: %s' % self._type.split(',')[1])
         print ('Maximum Temperature: %s' % self._type.split(',')[2]) 
         return self._type
@@ -92,128 +91,6 @@ class SH241():
         time.sleep(1)
         self._temp = self._instr.Read().strip('\r\n')
         return self._temp.split(',')[0]
-
-    def GetHumid(self):
-        self._instr.Write('%i,HUMI?' % self._address)
-        time.sleep(1)
-        self._humi = self._instr.Read().strip('\r\n')
-        print ('Present Humidity: %s' % self._humi.split(',')[0])
-        print ('Target Humidity: %s' % self._humi.split(',')[1])
-        print ('High Limit Humidity: %s' % self._humi.split(',')[2])
-        print ('Low Limit Humidity: %s' % self._humi.split(',')[3])
-        return self._humi
-
-    def GetRefrigeCtl(self):
-        self._instr.Write('%i,SET?' % self._address)
-        time.sleep(1)     
-        self._refrigectl = ''.join(map(chr, self._instr.Read())).strip('\r\n')
-        if self._refrigectl == 'REF9':
-            print ('Refrigerator Control: AUTO')
-        elif self._refrigectl == 'REF1':
-            print ('Refrigerator Control: MANUAL (FIXED)')
-        elif self._refrigectl == 'REF0':
-            print ('Refrigerator Control: MANUAL (OFF)') 
-        else:
-            print ('Chamber is not equipped with a refrigerator')
-        return self._refrigectl
-
-    def GetRefrigeStat(self):
-        self._instr.Write('%i,REF?' % self._address)
-        time.sleep(1)   
-        self._refrigestat = ''.join(map(chr, self._instr.Read())).strip('\r\n')
-        if self._refrigestat == '0':
-            print ('Refrigerator Status: OFF')
-        elif self._refrigestat == '1,ON1':
-            print ('Refrigerator Status: ACTIVE')
-        else:
-            print ('Chamber is not equipped with a refrigerator')
-        return self._refrigestat
-
-    def GetRelayStat(self):
-        self._instr.Write('%i,RELAY?' % self._address)
-        time.sleep(1)   
-        self._relaystat = ''.join(map(chr, self._instr.Read())).strip('\r\n')
-        print ('Number of Active Relays: %s' % self._relaystat.split(',')[0])
-        for relay in self._relaystat.split(',')[1:]:
-            print ('Relay Number: %s' % relay)
-        return self._relaystat
-
-    def GetHeaterStat(self):
-        self._instr.Write('%i,%%?' % self._address)
-        time.sleep(1)   
-        self._heaterstat = ''.join(map(chr, self._instr.Read())).strip('\r\n')
-        print ('Number of Heaters: %s' % self._heaterstat.split(',')[0])
-        print ('Heater Output: %s' % self._heaterstat.split(',')[1])        
-        print ('Humidifying Heater Output: %s' % self._heaterstat.split(',')[2])        
-        return self._heaterstat
-
-    def GetProgStat(self):
-        self._instr.Write('%i,PRGM MON?' % self._address)
-        time.sleep(1)   
-        self._progstat = ''.join(map(chr, self._instr.Read())).strip('\r\n')
-        if self._progstat[:2] != 'NA':
-            print ('Program Number: %s' % self._progstat.split(',')[0])
-            print ('Step Number: %s' % self._progstat.split(',')[1])
-            print ('Target Temperature: %s' % self._progstat.split(',')[2])
-            print ('Target Humidity: %s' % self._progstat.split(',')[3])        
-            print ('Step Time Remaining: %s' % self._progstat.split(',')[4])        
-            print ('Cycles Remaining: %s' % self._progstat.split(',')[5])        
-        else:
-            print ('No program data exists')            
-        return self._progstat
-
-    def GetProgData(self):
-        self._instr.Write('%i,PRGM DATA,PGM:1?' % self._address)
-        time.sleep(1)   
-        self._progdata = ''.join(map(chr, self._instr.Read())).strip('\r\n')
-        if self._progdata[:2] != 'NA':
-            print ('Total Steps: %s' % self._progdata.split(',')[0])
-            print ('Start Repetitions: %s' % self._progdata.split(',')[1].split('.')[0])
-            print ('End Repetitions: %s' % self._progdata.split(',')[1].split('.')[1])            
-            print ('Cycle Repetitions: %s' % self._progdata.split(',')[1].split('.')[2])            
-            print ('End Step: %s' % self._progdata.split(',')[2].split('(')[1].strip(')'))
-        else:
-            print ('No program data exists')
-        return self._progdata
-
-    def GetProgStepData(self, step):
-        self._instr.Write('%i,PRGM DATA,PGM:1,STEP%i?' % (self._address, step))
-        time.sleep(1)   
-        self._progstepdata = ''.join(map(chr, self._instr.Read())).strip('\r\n')
-        if self._progstepdata[:2] != 'NA':
-            print ('Step Number: %s' % self._progstepdata.split(',')[0])
-            print ('Target Temperature: %s' % self._progstepdata.split(',')[1][4:])
-            print ('Temperature Ramp: %s' % self._progstepdata.split(',')[2][10:])          
-            print ('Target Humidity: %s' % self._progstepdata.split(',')[4])          
-            print ('Humidity Ramp: %s' % self._progstepdata.split(',')[5][10:])
-            print ('Soak Time: %s' % self._progstepdata.split(',')[6][4:])
-            print ('Soak Guarantee: %s' % self._progstepdata.split(',')[7][7:])
-            if self._progstepdata.split(',')[8] == 'REF9':
-                print ('Refrigerator Control: AUTO')
-            elif self._progstepdata.split(',')[8] == 'REF1':
-                print ('Refrigerator Control: MANUAL (FIXED)')
-            elif self._progstepdata.split(',')[8] == 'REF0':    
-                print ('Refrigerator Control: MANUAL (OFF)')             
-            print ('Relay Status: %s' % self._progstepdata.split(',')[9][:2])
-        else:
-            print ('No program step data exists')
-        return self._progdata
-        
-    def SetIntMask(self, mask=0b01000000):
-        self._instr.Write('%i,MASK,%s' % (self._address, bin(mask)[2:]))
-        time.sleep(1)   
-        
-    def ResetIntStatus(self):
-        self._instr.Write('%i,SRQ,RESET' % self._address)
-        time.sleep(1)   
-        
-    def SetKeyProtectOn(self):
-        self._instr.Write('%i,KEYPROTECT,ON' % self._address) 
-        time.sleep(1)   
-        
-    def SetKeyProtectOff(self):
-        self._instr.Write('%i,KEYPROTECT,OFF' % self._address)    
-        time.sleep(1)   
          
     def SetPowerOn(self):
         self._instr.Write('%i,POWER,ON' % self._address)  
@@ -237,31 +114,7 @@ class SH241():
          
     def SetHumid(self, humi):
         self._instr.Write('%i,HUMI,S%i' % (self._address, humi)) 
-        time.sleep(1)   
-         
-    def SetHighHumid(self, humi):
-        self._instr.Write('%i,HUMI,H%i' % (self._address, humi))  
-        time.sleep(1)   
-         
-    def SetLowHumid(self, humi):
-        self._instr.Write('%i,HUMI,L%i' % (self._address, humi)) 
-        time.sleep(1)   
-                 
-    def SetHumidOff(self):
-        self._instr.Write('%i,HUMI,SOFF' % (self._address))         
-        time.sleep(1)   
-                 
-    def SetRefrigeCtl(self, refcode):
-        self._instr.Write('%i,SET,REF%i?' % (self._address, refcode))
-        time.sleep(1)   
-
-    def SetRelayOn(self, relay):
-        self._instr.Write('%i,RELAY,ON,%i?' % (self._address, relay))
-        time.sleep(1)   
-
-    def SetRelayOff(self, relay):
-        self._instr.Write('%i,RELAY,OFF,%i?' % (self._address, relay))
-        time.sleep(1)   
+        time.sleep(1)    
         
     def SetModeOff(self):
         self._instr.Write('%i,MODE,OFF' % self._address) 
@@ -454,9 +307,12 @@ class SH241():
     #Loop that reads temperature every 3 seconds
     def tempCheckerLoop(self):
         while True:
-            time.sleep(3.0) # Pauses this specific thread for 3 seconds
-            self.temperature = self.GetTempSilent()
-    
+            try:
+                time.sleep(3.0) # Pauses this specific thread for 3 seconds
+                self.temperature = self.GetTempSilent()
+            except Exception as e:
+                print(f"Error occurred while checking temperature: {e}")
+
     def deleteTask(self, target_db_id):
         # Safety check
         if not self._tasklist.head:
