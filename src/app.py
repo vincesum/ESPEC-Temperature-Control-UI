@@ -287,7 +287,7 @@ def get_status():
 def shutdown_server():
     print("Shutting down the server...")
     
-    # Optional Safety Check: Stop the oven before quitting!
+    # Safety Check: Stop the oven before quitting!
     try:
         if oven_connected:
             oven.stopTask()

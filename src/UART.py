@@ -2,6 +2,8 @@ import serial
 import serial.rs485
 import serial.tools.list_ports
 import time
+import sys
+import glob
 
 '''
 UART Master class for serial communication
@@ -19,6 +21,7 @@ class UARTMaster:
         self.use_rs485 = use_rs485
         self.address = device_address  # Store the target device address
         self.oven_connected = False
+        self.autodetect_oven_port()  # Attempt to auto-detect the oven port on initialization
 
     def CreateDeviceInfoList(self):
         pass
@@ -76,7 +79,7 @@ class UARTMaster:
             return self.ser.readline().decode('ascii').strip()
         return None
     
-    def autodetect_oven_port():
+    def autodetect_oven_port(self):
         print("Scanning for oven controller...")
         
         # 1. Get a list of ALL hardware ports plugged into the laptop
@@ -96,10 +99,10 @@ class UARTMaster:
                 temp_connection = serial.Serial(test_port, baudrate=9600, timeout=1)
                 
                 # Send a harmless Espec command (like asking for the monitor status)
-                temp_connection.write(b'MON?,1\r\n')
+                temp_connection.write(('%i,TYPE?\r\n' % self.address).encode('ascii'))
                 
                 # Wait a split second, then read the response
-                time.sleep(0.1) 
+                time.sleep(0.5) 
                 response = temp_connection.readline().decode('ascii').strip()
                 
                 # Always close the temporary connection!
@@ -108,7 +111,8 @@ class UARTMaster:
                 # 3. If we get text back, we found the winner!
                 if response:
                     print(f"SUCCESS: Oven detected on {test_port}!")
-                    return test_port
+                    self.port = test_port  # Set the detected port for future use
+                    return
 
             except serial.SerialException:
                 # If the port is locked by another program (Access Denied), 
