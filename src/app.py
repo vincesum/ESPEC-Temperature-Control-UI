@@ -9,7 +9,7 @@ import webbrowser
 import time
 
 oven = SH241(address=1)
-#oven.OpenChannel()
+oven.OpenChannel()
 
 oven_status = {
     "task_name": "Task",
