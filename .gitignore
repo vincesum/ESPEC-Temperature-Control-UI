@@ -1,6 +1,5 @@
 #PyInstaller Folders & Files
 build/
-dist/
 *.spec
 
 #Python Cache (Hidden files Python makes to run faster)

@@ -1,139 +1,154 @@
 # -*- coding: utf-8 -*-
-"""ESPEC.py: Control ESPEC temperature chambers via RS-485 
+"""
+ESPEC.py: Control ESPEC temperature chambers via RS-485/RS-232.
+
+This module provides the SH241 class for interfacing with ESPEC environmental 
+test chambers. It manages serial communication, task queuing, asynchronous 
+temperature monitoring, and executing multi-step thermal cycles.
 """
 
 import time
+import threading
 from datetime import datetime
+from typing import List, Tuple, Optional, Union
 
 from UART import UARTMaster
-
 from Tasks import Task
 from Tasks import LinkedList
 from Cycle import Cycle
-from Timer import ProgTimer
-from Timer import PyTimer
-import threading
 
-class SH241():
 
-    def __init__(self, address=1):
+class SH241:
+    """
+    Controller class for the ESPEC SH241 temperature chamber.
+
+    Manages hardware communication, maintains a queue of thermal tasks 
+    (Linked List), and runs asynchronous threads to monitor and regulate 
+    chamber temperature against a set schedule.
+
+    Attributes:
+        temperature (Union[float, str]): The last read temperature of the chamber.
+        mode (str): The current operation mode (e.g., 'STANDBY', 'CYCLE').
+        state (str): The current thermal state (e.g., 'IDLE', 'HEATING', 'SOAKING').
+        task_done (bool): Flag indicating if the current task has completed.
+        stop_task (bool): Flag to trigger an emergency stop of the task queue.
+    """
+
+    def __init__(self, address: int = 1) -> None:
+        """Initializes the SH241 controller and connects to the hardware."""
         self._address = address
-        self._instr = UARTMaster(use_rs485=False)
+        self._instr = UARTMaster(use_rs485=False, device_address=address)
         self._instr.CreateDeviceInfoList()
         self._instr.GetDeviceInfoList()
         self._tasklist = LinkedList()
-        self.timer1 = None
-        self.timer2 = None
-        self.startSoaking = False
-        #Variables for cycling
-        self.currentCycle = 1
-        self.halfCycle = 0
-        #Status variables
-        self.temperature = 0
-        self.mode = "STANDBY" #Modes: STANDBY, RAMPING, SOAKING, CYCLE_RAMPING, CYCLE_SOAKING
-        self.state = "IDLE" #States: IDLE, HEATING, COOLING, SOAKING
-        self.task_done = False
-        self.stop_task = False
         
-    def SetRS485(self):
+        self.timer1: Optional[threading.Timer] = None
+        self.timer2: Optional[threading.Timer] = None
+        self.startSoaking: bool = False
+        
+        # Variables for cycling
+        self.currentCycle: int = 1
+        self.halfCycle: int = 0
+        
+        # Status variables
+        self.temperature: Union[float, str] = 0.0
+        self.mode: str = "STANDBY" 
+        self.state: str = "IDLE" 
+        self.task_done: bool = False
+        self.stop_task: bool = False
+        
+    def SetRS485(self) -> None:
+        """Reconfigures the serial connection to use RS-485."""
         self._instr = UARTMaster(use_rs485=True)
         self.OpenChannel()
         
-    def SetRS232(self):
+    def SetRS232(self) -> None:
+        """Reconfigures the serial connection to use RS-232."""
         self._instr = UARTMaster(use_rs485=False)
         self.OpenChannel()
 
-    def OpenChannel(self):
+    def OpenChannel(self) -> None:
+        """Opens the serial port, purges buffers, and starts the monitor thread."""
         self._instr.Open()
         self._instr.Purge()
         self.SetModeStandby()
         threading.Thread(target=self.tempCheckerLoop, daemon=True).start()
 
-    def GetType(self):
-        self._instr.Write('%i,TYPE?' % self._address)
-        time.sleep(1)   
-        self._type = self._instr.Read().strip('\r\n')
-        print ('Dry-bulb Sensor: %s' % self._type.split(',')[0])
-        print ('Temperature Controller: %s' % self._type.split(',')[1])
-        print ('Maximum Temperature: %s' % self._type.split(',')[2]) 
-        return self._type
-
-    def GetMode(self):
+    def GetMode(self) -> str:
+        """Queries and returns the current operation mode of the chamber."""
         self._instr.Write('%i,MODE?' % self._address)
         time.sleep(1)   
         self._mode = self._instr.Read().strip('\r\n')
-        print ('Mode: %s' % self._mode)
+        print(f"Mode: {self._mode}")
         return self._mode
 
-    def GetCondition(self):
+    def GetCondition(self) -> str:
+        """Queries and prints the overall condition of the chamber (Temp, Mode, Alarms)."""
         self._instr.Write('%i,MON?' % self._address)
         time.sleep(1)   
         self._cond = self._instr.Read().strip('\r\n')
-        print ('Temperature: %s' % self._cond.split(',')[0])
-        print ('Humidity: %s' % self._cond.split(',')[1])
-        print ('Mode: %s' % self._cond.split(',')[2])
-        print ('Number of Alarms: %s' % self._cond.split(',')[3])
+        print(f"Temperature: {self._cond.split(',')[0]}")
+        print(f"Mode: {self._cond.split(',')[1]}")
+        print(f"Number of Alarms: {self._cond.split(',')[2]}")
         return self._cond
         
-    def GetTemp(self):
+    def GetTemp(self) -> str:
+        """Queries and prints the present, target, and limit temperatures."""
         self._instr.Write('%i,TEMP?' % self._address)
         time.sleep(1)   
         self._temp = self._instr.Read().strip('\r\n')
-        print ('Present Temperature: %s' % self._temp.split(',')[0])
-        print ('Target Temperature: %s' % self._temp.split(',')[1])
-        print ('High Limit Temperature: %s' % self._temp.split(',')[2])
-        print ('Low Limit Temperature: %s' % self._temp.split(',')[3])
+        print(f"Present Temperature: {self._temp.split(',')[0]}")
+        print(f"Target Temperature: {self._temp.split(',')[1]}")
+        print(f"High Limit Temperature: {self._temp.split(',')[2]}")
+        print(f"Low Limit Temperature: {self._temp.split(',')[3]}")
         return self._temp           
     
-    def GetTempSilent(self):
+    def GetTempSilent(self) -> str:
+        """Queries the temperature without printing to the console."""
         self._instr.Write('%i,TEMP?' % self._address)
         self._instr.Purge()
         time.sleep(1)
         self._temp = self._instr.Read().strip('\r\n')
         return self._temp.split(',')[0]
          
-    def SetPowerOn(self):
+    def SetPowerOn(self) -> None:
         self._instr.Write('%i,POWER,ON' % self._address)  
         time.sleep(5)   
          
-    def SetPowerOff(self):
+    def SetPowerOff(self) -> None:
         self._instr.Write('%i,POWER,OFF' % self._address)     
         time.sleep(5)   
-                 
-    def SetTemp(self, temp):
+                  
+    def SetTemp(self, temp: float) -> None:
+        """Sets the target temperature for the chamber."""
         self._instr.Write('%i,TEMP,S%.1f' % (self._address, temp)) 
         time.sleep(1)   
-         
-    def SetHighTemp(self, temp):
-        self._instr.Write('%i,TEMP,H%.1f' % (self._address, temp))  
-        time.sleep(1)   
-         
-    def SetLowTemp(self, temp):
-        self._instr.Write('%i,TEMP,L%.1f' % (self._address, temp))  
-        time.sleep(1)   
-         
-    def SetHumid(self, humi):
-        self._instr.Write('%i,HUMI,S%i' % (self._address, humi)) 
-        time.sleep(1)    
         
-    def SetModeOff(self):
+    def SetModeOff(self) -> None:
         self._instr.Write('%i,MODE,OFF' % self._address) 
         time.sleep(2)   
          
-    def SetModeStandby(self):
+    def SetModeStandby(self) -> None:
         self._instr.Write('%i,MODE,STANDBY' % self._address) 
         time.sleep(2)       
          
-    def SetModeConstant(self):
+    def SetModeConstant(self) -> None:
         self._instr.Write('%i,MODE,CONSTANT' % self._address) 
         time.sleep(2)   
          
-    def SetModeProgram(self):
+    def SetModeProgram(self) -> None:
         self._instr.Write('%i,MODE,RUN 1' % self._address)  
         time.sleep(2)   
          
-    def ProgramWrite(self, program=[(30.0, 'TRAMPON', '00:01')], cycles=1):
-        #original code
+    def ProgramWrite(self, program: List[Tuple[float, str, str]] = [(30.0, 'TRAMPON', '00:01')], cycles: int = 1) -> None:
+        """
+        Writes a multi-step thermal program to the chamber's memory.
+
+        Args:
+            program (List[Tuple]): A list of steps where each step is (Temp, RampMode, TimeString).
+            cycles (int): The number of times to loop the program.
+        """
+        # Original code dynamic write
         self._instr.Write('%i,PRGM DATA WRITE,PGM:1,EDIT START' % self._address)
         time.sleep(1)           
         for idx, step in enumerate(program):
@@ -148,13 +163,14 @@ class SH241():
         time.sleep(1)   
         self._instr.Write('%i,PRGM DATA WRITE,PGM:1,EDIT END' % self._address)
         time.sleep(1)   
-        #this works
-            # 1. Open the edit session
+        
+        # Hardcoded verification/override
+        # 1. Open the edit session
         self.ProgramErase()
         self._instr.Write('PRGM DATA WRITE, PGM:1, EDIT START')
         time.sleep(0.5)
 
-        # 2. Write the step (Note: removed the trailing comma from your original string)
+        # 2. Write the step
         self._instr.Write('PRGM DATA WRITE, PGM:1, STEP1, TEMP12.0, TRAMPOFF, TIME02:40')
         time.sleep(0.5)
 
@@ -167,48 +183,52 @@ class SH241():
         response = self._instr.Read()
         print(f"Chamber Status: {response}")
 
-    def ProgramErase(self):
+    def ProgramErase(self) -> None:
         self._instr.Write('%i,PRGM ERASE,PGM:1' % self._address)
         time.sleep(1)   
 
-    def ProgramAdvance(self):
-        self._instr.Write('%i,PRGM,ADVANCE' % self._address)                 
+    def ProgramAdvance(self) -> None:
+        self._instr.Write('%i,PRGM,ADVANCE' % self._address)                
         time.sleep(1)   
          
-    def ProgramEnd(self):
+    def ProgramEnd(self) -> None:
         self._instr.Write('%i,PRGM,END,HOLD' % self._address)
         time.sleep(1)   
          
-    def AddTask(self, temp, hours, minutes, seconds, taskname="Task", db_id="None"):
+    def AddTask(self, temp: float, hours: int, minutes: int, seconds: int, taskname: str = "Task", db_id: Optional[int] = None) -> None:
+        """Adds a standard soak task to the chamber queue."""
         if not hasattr(self, '_tasklist'):
             self._tasklist = LinkedList()
         task = Task(temp, hours, minutes, seconds, taskname, db_id)
         self._tasklist.enqueue(task)
         
-    def AddCycle(self, temp1, temp2, hours, minutes, seconds, totalCycles, taskname="Cycle", db_id="None"):
+    def AddCycle(self, temp1: float, temp2: float, hours: int, minutes: int, seconds: int, totalCycles: int, taskname: str = "Cycle", db_id: Optional[int] = None) -> None:
+        """Adds an alternating temperature cycle task to the chamber queue."""
         if not hasattr(self, '_tasklist'):
             self._tasklist = LinkedList()
         task = Cycle(temp1, temp2, hours, minutes, seconds, totalCycles, taskname, db_id)
         self._tasklist.enqueue(task)
         
-    def AddIdle(self, hours, minutes, seconds):
+    def AddIdle(self, hours: int, minutes: int, seconds: int) -> None:
+        """Adds a standby/idle delay to the queue."""
         self.AddTask(0, hours, minutes, seconds, taskname="Idle")
         
-    '''
-    Function to add an idling task to tasklist to wait till a specific datetime.
-    Format of datetime is YYYY-MM-DD HH:MM:SS
-    '''
-    def WaitTillDateTime(self, year, month, day, hour, minute):
+    def WaitTillDateTime(self, year: int, month: int, day: int, hour: int, minute: int) -> None:
+        """
+        Calculates the time delta between now and a target datetime, 
+        then queues an Idle task for that duration.
+        """
         target_dt = datetime(year, month, day, hour, minute)
         now = datetime.now()
         duration = target_dt - now
-        total_seconds = duration.total_seconds()
+        total_seconds = int(duration.total_seconds())
         hours = total_seconds // 3600
-        minutes = total_seconds % 3600 // 60
+        minutes = (total_seconds % 3600) // 60
         seconds = total_seconds % 60
         self.AddIdle(hours, minutes, seconds)
 
-    def stopTask(self):
+    def stopTask(self) -> None:
+        """Cancels all running timers, clears current progress, and puts the chamber in Standby."""
         self.timer1 = None
         self.timer2 = None
         self.currentCycle = 1
@@ -221,13 +241,18 @@ class SH241():
             print("No Tasks in queue. Putting chamber in Standby.")
             return
     
-    def startNextTask(self):
-        if (self.mode != "CYCLE"):
+    def startNextTask(self) -> None:
+        """Helper to advance the queue when a soak is finished."""
+        if self.mode != "CYCLE":
             self.task_done = True
         self.startTask()
     
-    def startTask(self):
-        #Cancel existing timers
+    def startTask(self) -> None:
+        """
+        Pulls the next task from the queue and executes it based on its type.
+        Supports standard tasks, idle timers, and cycles.
+        """
+        # Cancel existing timers
         self.timer1 = None
         self.timer2 = None
         
@@ -236,41 +261,45 @@ class SH241():
             print("All tasks completed. Putting chamber in Standby.")
             return
 
-        #Pops the current task to execute
+        # Pops the current task to execute
         node = self._tasklist.head
         task = node.data
         
-        #Converting total seconds to hours, minutes and seconds
+        # Converting total seconds to hours, minutes and seconds
         hours = task.durationInSeconds // 3600
         minutes = (task.durationInSeconds % 3600) // 60
         seconds = task.durationInSeconds % 60
         
         self.stop_task = False
-        #For task
-        if (task.taskName == "Task"):
+        
+        # For task
+        if task.taskName == "Task":
             self._tasklist.pop_head()
             print(f"Starting {task.taskName}: Soak at {task.temp}°C for {hours}hr {minutes}min {seconds}s")
             self.startTemperatureSoak(task.temp, task.durationInSeconds)
-        #For Idling process
-        elif (task.taskName == "Idle"):
+            
+        # For Idling process
+        elif task.taskName == "Idle":
             self._tasklist.pop_head()
             print(f"Idling for {hours}hr {minutes}min {seconds}s")
             self.SetModeStandby()
-            durationInSeconds = hours*3600 + minutes*60 + seconds
+            durationInSeconds = hours * 3600 + minutes * 60 + seconds
             try:
                 self.timer1 = threading.Timer(durationInSeconds, self.startTask)
                 self.timer1.start()
             except Exception as e:
                 print(f"CRASHED while setting timer: {e}")
-        #For Cycling process
+                
+        # For Cycling process
         else:
-            #Half cycle refers to the period where temperature goes to either temp1 or temp2 and soaks
-            #Full cycle is the process of soaking at both temperatures for one entire duration
+            # Half cycle refers to the period where temperature goes to either temp1 or temp2 and soaks
+            # Full cycle is the process of soaking at both temperatures for one entire duration
             self.state = "CYCLE"
-            if (self.halfCycle >= 2):
+            if self.halfCycle >= 2:
                 self.currentCycle += 1
                 self.halfCycle = 0
-            if (self.halfCycle == 0):
+                
+            if self.halfCycle == 0:
                 print(f"Starting cycle {self.currentCycle}: Soak at {task.temp1}°C for {hours}hr {minutes}min {seconds}s")
                 self.startCycle(self.currentCycle, task.totalCycles, task.temp1, task.temp2, hours, minutes, seconds, state=0)
             else:
@@ -278,43 +307,54 @@ class SH241():
                 self.startCycle(self.currentCycle, task.totalCycles, task.temp1, task.temp2, hours, minutes, seconds, state=1)
             self.halfCycle += 1
     
-    '''
-    Function to start cycle based on state
-    @params:
-    currentCycle: Current cycle count
-    totalCycle: Total cycle count
-    temp1, temp2: temperatures 1 and 2 to alternate between
-    state: 0 if going to temp 1, 1 if going to temp 2
-    hours, minutes, seconds: time to soak in each temperature for
-    '''
-    def startCycle(self, currentCycle, totalCycles, temp1, temp2, hours, minutes, seconds, state=0):
-        if (currentCycle > totalCycles):
+    def startCycle(self, currentCycle: int, totalCycles: int, temp1: float, temp2: float, hours: int, minutes: int, seconds: int, state: int = 0) -> None:
+        """
+        Executes one half of a thermal cycle (heating or cooling).
+
+        Args:
+            currentCycle (int): Current cycle count.
+            totalCycles (int): Total cycles required.
+            temp1 (float): Target temperature for state 0.
+            temp2 (float): Target temperature for state 1.
+            hours (int): Time to soak in hours.
+            minutes (int): Time to soak in minutes.
+            seconds (int): Time to soak in seconds.
+            state (int): 0 for temp1, 1 for temp2.
+        """
+        if currentCycle > totalCycles:
             self._tasklist.pop_head()
             self.currentCycle = 1
             self.halfCycle = 0
             self.task_done = True
             self.startNextTask()
             return
+            
         self.mode = "CYCLE"
         durationInSeconds = hours * 3600 + minutes * 60 + seconds
-        if (state == 0):
+        
+        if state == 0:
             print(f"Starting cycle {self.currentCycle}: Soak at {temp1}°C for {hours}hr {minutes}min {seconds}s")
             self.startTemperatureSoak(temp1, durationInSeconds)
         else: 
             self.startTemperatureSoak(temp2, durationInSeconds)
             print(f"Starting cycle {self.currentCycle}: Soak at {temp2}°C for {hours}hr {minutes}min {seconds}s")
     
-    #Loop that reads temperature every 3 seconds
-    def tempCheckerLoop(self):
+    def tempCheckerLoop(self) -> None:
+        """Background thread loop that polls the chamber temperature every 3 seconds."""
         while True:
             try:
-                time.sleep(3.0) # Pauses this specific thread for 3 seconds
+                time.sleep(3.0) 
                 self.temperature = self.GetTempSilent()
             except Exception as e:
                 print(f"Error occurred while checking temperature: {e}")
 
-    def deleteTask(self, target_db_id):
-        # Safety check
+    def deleteTask(self, target_db_id: int) -> None:
+        """
+        Searches the queue for a task with a matching database ID and removes it.
+
+        Args:
+            target_db_id (int): The database ID of the task to delete.
+        """
         if not self._tasklist.head:
             print("List is empty.")
             return
@@ -322,16 +362,13 @@ class SH241():
         current = self._tasklist.head
         previous = None
 
-        #Loop through the whole list
         while current:
-            #Check for matching id
             if current.data.db_id == target_db_id:
-                
                 if previous is None:
-                    #Case: Deleting the very first item (Head)
+                    # Deleting the head
                     self._tasklist.head = current.next
                 else:
-                    #Case: Deleting a middle or last item
+                    # Deleting a middle or last item
                     previous.next = current.next
                 
                 print(f"Successfully deleted Task with DB ID {target_db_id}")
@@ -339,30 +376,32 @@ class SH241():
 
             previous = current
             current = current.next
-        #Exiting while loop means id not found
+            
         print(f"Task with DB ID {target_db_id} was not found in the Oven.")
         
-
-    #Queries the temperature at intervals of 3 seconds and sets a timer once it reaches target
-    def temperatureQuerySchedule(self, target, durationInSeconds):
+    def temperatureQuerySchedule(self, target: float, durationInSeconds: int) -> None:
+        """
+        Schedules a background callback to evaluate if the chamber has reached 
+        the target temperature yet.
+        """
         if self.stop_task:
             return
         self.timer2 = threading.Timer(3.0, self.checkTempCallback, args=[target, durationInSeconds])
         self.timer2.start()
         
-
-    #Function called every 3 seconds to check temperature
-    #Sets a timer for a certain duration after timer has reached target temperature
-    #Then sets chamber to standby after timer ends
-    def checkTempCallback(self, target, durationInSeconds):
-        
+    def checkTempCallback(self, target: float, durationInSeconds: int) -> None:
+        """
+        Evaluates the current temperature against the target. 
+        If reached, starts the soak timer. If missed, reschedules itself.
+        """
         hours = durationInSeconds // 3600
         minutes = (durationInSeconds % 3600) // 60
         seconds = durationInSeconds % 60
-        #When target temperature is reached, start soaking for specified duration
-        if abs(float(self.temperature) - target) <= 1:
+        
+        # When target temperature is reached, start soaking for specified duration
+        if abs(float(self.temperature) - target) <= 1.0:
             dateTime = datetime.now()
-            self.state = "SOAKING"  # Indicate soaking state started
+            self.state = "SOAKING"  
             print(f"Target {target}°C Reached at {dateTime}. Starting Soak for {hours}hr {minutes}min {seconds}s.")
             try:
                 self.timer1 = threading.Timer(durationInSeconds, self.startNextTask)
@@ -370,26 +409,31 @@ class SH241():
             except Exception as e:
                 print(f"CRASHED while setting timer: {e}")
         else:
-            #Target missed. Schedule the next check.
+            # Target missed. Schedule the next check.
             self.temperatureQuerySchedule(target, durationInSeconds)
             self.state = "HEATING" if float(self.temperature) < target else "COOLING"
-            print(f"Target Temperature= {target}°C, Current Temperature= {self.temperature}°C, rechecking in 3 seconds.")
+            print(f"Target Temperature = {target}°C, Current Temperature = {self.temperature}°C, rechecking in 3 seconds.")
             
-    #Sets the oven to soak at a target temperature for a specified duration
-    def startTemperatureSoak(self, target_temp, durationInSeconds):
+    def startTemperatureSoak(self, target_temp: float, durationInSeconds: int) -> None:
+        """
+        Sets the chamber to CONSTANT mode and initiates the temperature 
+        monitoring loop to wait for the target temperature.
+        """
         if self.stop_task:
             return
         self.SetTemp(target_temp)
         self.SetModeConstant()
         self.temperatureQuerySchedule(target_temp, durationInSeconds)
         
-    def returnToAmbient(self):
+    def returnToAmbient(self) -> None:
+        """Resets the chamber to a safe 25.0°C."""
         ambientTemp = 25.0
-        self.setTemp(ambientTemp)
+        self.SetTemp(ambientTemp)
     
-    def PrintTaskList(self):
+    def PrintTaskList(self) -> None:
+        """Prints the current contents of the task queue."""
         self._tasklist.print_list()
 
-    def CloseChannel(self):
+    def CloseChannel(self) -> None:
+        """Closes the underlying serial communication channel."""
         self._instr.Close()
-         
