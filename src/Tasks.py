@@ -1,7 +1,6 @@
 '''Tasks.py: Defines the Task and LinkedList classes for managing oven tasks. List implements a queue using a linked list structure.
 '''
 
-from Timer import ProgTimer
 import threading
 #A single node in a linked list
 class Node:
